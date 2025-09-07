@@ -27,7 +27,7 @@ config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
         bool "Block Whole-Disk Access for Baseband"
         depends on SECURITY_BASEBAND_GUARD
         help
-          Deny access to to Wholedisk?{}
+          Deny access to to Wholedisk?
           If unsure, leave this y.
 
 config SECURITY_BASEBAND_GUARD_VERBOSE
