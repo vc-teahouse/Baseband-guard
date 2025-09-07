@@ -36,7 +36,7 @@ perform_cleanup() {
 # Sets up or update Baseband-guard environment
 setup_anti_format() {
     echo "[+] Setting up Baseband-guard..."
-    test -d "$GKI_ROOT/Baseband-guard" || git clone https://github.com//Baseband-guard && echo "[+] Repository cloned."
+    test -d "$GKI_ROOT/Baseband-guard" || git clone https://github.com/vc-teahouse/Baseband-guard && echo "[+] Repository cloned."
     cd "$GKI_ROOT/Baseband-guard"
     cd "$SECURITY_DIR"
     ln -sf "$(realpath --relative-to="$SECURITY_DIR" "$GKI_ROOT/Baseband-guard")" "baseband-guard" && echo "[+] Symlink created."
