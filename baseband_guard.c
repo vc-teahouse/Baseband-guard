@@ -19,6 +19,8 @@
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
 
+#include "baseband_guard.h"
+
 extern char *saved_command_line; 
 #define BB_ENFORCING                 1
 

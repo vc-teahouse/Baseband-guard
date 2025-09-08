@@ -1,0 +1,3 @@
+#define BBG_SCAN_MAX_RETRY   10
+#define BBG_SCAN_RETRY_MS    5000
+#define BBG_SCAN_DELAY_MS    10000
