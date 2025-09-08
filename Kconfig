@@ -2,8 +2,7 @@ menu "Baseband Security Guard Configuration"
 
 config SECURITY_BASEBAND_GUARD
        bool "Enable Baseband Guard (Anti-Format)" 
-       default n
-       depends on LSM
+       default y
        depends on SECURITY
        help
           Made by QiuDaoYu, Anti Format Baseband
