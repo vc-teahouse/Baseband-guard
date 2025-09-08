@@ -42,7 +42,7 @@ setup_anti_format() {
     ln -sf "$(realpath --relative-to="$SECURITY_DIR" "$GKI_ROOT/Baseband-guard")" "baseband-guard" && echo "[+] Symlink created."
 
     # Add entries in Makefile and Kconfig if not already existing
-    grep -q "baseband-guard" "$SECURITY_MAKEFILE" || printf "\nobj-\$(SECURITY_BASEBAND_GUARD) += baseband-guard/baseband_guard.o\n" >> "$SECURITY_MAKEFILE" && echo "[+] Modified Makefile."
+    grep -q "baseband-guard" "$SECURITY_MAKEFILE" || printf "\nobj-\$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband-guard/baseband_guard.o\n" >> "$SECURITY_MAKEFILE" && echo "[+] Modified Makefile."
     grep -q "source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" || sed -i "/endmenu/i\source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" && echo "[+] Modified Kconfig."
     echo '[+] Done.'
 }
