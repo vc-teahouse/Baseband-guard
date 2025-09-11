@@ -3,390 +3,371 @@
 #include <linux/security.h>
 #include <linux/lsm_hooks.h>
 #include <linux/fs.h>
+#include <linux/binfmts.h>
 #include <linux/namei.h>
-#include <linux/path.h>
-#include <linux/dcache.h>
 #include <linux/blkdev.h>
 #include <linux/blk_types.h>
-#include <linux/cred.h>
-#include <linux/limits.h>
-#include <linux/string.h>
-#include <linux/printk.h>
-#include <linux/errno.h>
-#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/hashtable.h>
-#include <linux/uaccess.h>
+#include <linux/string.h>
+#include <linux/errno.h>
+#include <linux/version.h>
+#include <linux/jiffies.h>
 #include <linux/workqueue.h>
+#include <linux/atomic.h>
+#include <linux/param.h>
+#include <linux/sched.h>
 
-#include "baseband_guard.h"
-
-extern char *saved_command_line; 
-#define BB_ENFORCING                 1
-
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
-#define BB_ALLOW_IN_RECOVERY         1
-#else
-#define BB_ALLOW_IN_RECOVERY         0
-#endif
-
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_PROTECT_BOOTIMG
-#define BB_PROTECT_BOOTIMG           1
-#else
-#define BB_PROTECT_BOOTIMG           0
-#endif
-
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
-#define BB_BLOCK_WHOLEDISK           1
-#else
-#define BB_BLOCK_WHOLEDISK           0
-#endif
+#define BB_ENFORCING 1
 
 #ifdef CONFIG_SECURITY_BASEBAND_GUARD_VERBOSE
-#define BB_VERBOSE                   1
+#define BB_VERBOSE 1
 #else
-#define BB_VERBOSE                   0
+#define BB_VERBOSE 0
 #endif
 
-#define BB_BYNAME_DIR   "/dev/block/by-name"
+#define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
+#define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
 
-static const char * const qcom_core_parts[] = {
-"modem","modemst1","modemst2","fsg","fsc","bluetooth",
-"dsp","cdsp","qweslicstore","qweslicstorebak",
-"xbl","xbl_config","abl","tz","hyp","cmnlib","cmnlib64",
-"keymaster","devcfg","uefisecapp","qupfw","featenabler",
-"vbmeta","vbmeta_system","vbmeta_vendor","vbmeta_system_ext",
-"keystore","rpm","rpmfw","uefi","spunvm","apdp","msadp","ocdt"
+#define BB_BYNAME_DIR "/dev/block/by-name"
+
+static const char * const allowed_domain_substrings[] = {
+	"update_engine",
+	"fastbootd",
+	"recovery",
+	"rmt_storage",
+	"oplus",
+	"oppo",
 };
+static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
-static const char * const bootimg_parts[] = {
-"boot","dtbo","vendor_boot","init_boot","recovery"
+static const char * const allowlist_names[] = {
+	"boot", "init_boot", "dtbo", "vendor_boot","userdata","metadata","cache","misc",
 };
-
-static const char * const wholedisk_prefixes[] = { "sd", "mmcblk", "nvme" };
+static const size_t allowlist_names_cnt = ARRAY_SIZE(allowlist_names);
 
 struct bbg_node { dev_t dev; struct hlist_node h; };
-DEFINE_HASHTABLE(bbg_protected_devs, 8); 
+DEFINE_HASHTABLE(bbg_allow_devs, 6);
+static bool bbg_cache_built;
 
-static bool in_recovery_mode(void)
+static const char * const ready_mounts[] = { "/system", "/data" };
+#define READY_MOUNT_CNT (ARRAY_SIZE(ready_mounts))
+static atomic_long_t ready_seen_mask = ATOMIC_LONG_INIT(0);
+static bool bbg_ready;
+
+static atomic_t bbg_bprm_built = ATOMIC_INIT(0);
+static const char *zygote_candidates[] = {
+	"/system/bin/app_process64",
+	"/system/bin/app_process32",
+	"/apex/com.android.art/bin/app_process64",
+	"/apex/com.android.art/bin/app_process32",
+};
+#define ZYGOTE_CAND_CNT (ARRAY_SIZE(zygote_candidates))
+
+static struct delayed_work bbg_one_shot_build;
+static struct workqueue_struct *bbg_wq;
+static unsigned int bbg_post_ready_delay_ms = 1200; /* 1.2s */
+module_param_named(post_ready_delay_ms, bbg_post_ready_delay_ms, uint, 0644);
+MODULE_PARM_DESC(post_ready_delay_ms, "Delay (ms) after readiness before building allowlist");
+
+static inline bool bbg_is_ready(void)
 {
-#if BB_ALLOW_IN_RECOVERY
-if (!saved_command_line)
+	unsigned long mask = atomic_long_read(&ready_seen_mask);
+	unsigned long full = (READY_MOUNT_CNT >= BITS_PER_LONG) ? ~0UL : ((1UL << READY_MOUNT_CNT) - 1);
+	return bbg_ready || ((mask & full) == full);
+}
+
+static bool allow_has(dev_t dev)
+{
+	struct bbg_node *p;
+	hash_for_each_possible(bbg_allow_devs, p, h, (u64)dev)
+		if (p->dev == dev) return true;
 	return false;
-if (strstr(saved_command_line, "androidboot.mode=recovery"))
-	return true;
-if (strstr(saved_command_line, "skip_initramfs=1") &&
-	strstr(saved_command_line, "recovery"))
-	return true;
+}
+
+static void allow_add(dev_t dev)
+{
+	struct bbg_node *n;
+	if (!dev || allow_has(dev)) return;
+	n = kmalloc(sizeof(*n), GFP_KERNEL);
+	if (!n) return;
+	n->dev = dev;
+	hash_add(bbg_allow_devs, &n->h, (u64)dev);
+#if BB_VERBOSE
+	bb_pr("allow dev %u:%u\n", MAJOR(dev), MINOR(dev));
 #endif
-return false;
 }
 
-static bool is_write_open(const struct file *file)
+static bool resolve_byname_dev(const char *name, dev_t *out)
 {
-if (!file) return false;
-if (file->f_mode & FMODE_WRITE) return true;
-return ((file->f_flags & O_ACCMODE) != O_RDONLY);
+	char *path = kasprintf(GFP_KERNEL, "%s/%s", BB_BYNAME_DIR, name);
+	dev_t dev; int ret;
+	if (!path) return false;
+	ret = lookup_bdev(path, &dev);
+	kfree(path);
+	if (ret) return false;
+	*out = dev;
+	return true;
 }
 
-static bool is_wholedisk(struct block_device *bdev)
+static void bbg_build_allowlist_once(void)
 {
-size_t i;
-const char *dn;
+	size_t i; dev_t dev; bool any = false;
 
-if (!bdev || !bdev->bd_disk)
+	if (READ_ONCE(bbg_cache_built))
+		return;
+
+	for (i = 0; i < allowlist_names_cnt; i++) {
+		const char *n = allowlist_names[i]; bool ok = false;
+
+		if (resolve_byname_dev(n, &dev)) { allow_add(dev); ok = true; }
+
+		if (!ok) {
+			char *na = kasprintf(GFP_KERNEL, "%s_a", n);
+			char *nb = kasprintf(GFP_KERNEL, "%s_b", n);
+			if (na) { if (resolve_byname_dev(na, &dev)) { allow_add(dev); ok = true; } kfree(na); }
+			if (!ok && nb) { if (resolve_byname_dev(nb, &dev)) { allow_add(dev); ok = true; } kfree(nb); }
+		}
+		any |= ok;
+	}
+
+	WRITE_ONCE(bbg_cache_built, true);
+#if BB_VERBOSE
+	bb_pr("allowlist built (any=%d)\n", any);
+#endif
+}
+
+static bool reverse_allow_match_and_cache(dev_t cur)
+{
+	size_t i; dev_t d;
+
+	for (i = 0; i < allowlist_names_cnt; i++) {
+		const char *n = allowlist_names[i];
+
+		if (resolve_byname_dev(n, &d) && d == cur) { allow_add(cur); return true; }
+
+		{
+			char *na = kasprintf(GFP_ATOMIC, "%s_a", n);
+			char *nb = kasprintf(GFP_ATOMIC, "%s_b", n);
+			if (na) { if (resolve_byname_dev(na, &d) && d == cur) { kfree(na); kfree(nb); allow_add(cur); return true; } kfree(na); }
+			if (nb) { if (resolve_byname_dev(nb, &d) && d == cur) { kfree(nb); allow_add(cur); return true; } kfree(nb); }
+		}
+	}
 	return false;
-dn = bdev->bd_disk->disk_name;
-if (!dn)
-	return false;
-
-for (i = 0; i < ARRAY_SIZE(wholedisk_prefixes); i++) {
-	size_t p = strlen(wholedisk_prefixes[i]);
-	if (!strncmp(dn, wholedisk_prefixes[i], p))
-		return true;
-}
-return false;
 }
 
-static void bbg_protect_dev(dev_t dev)
+static int bbg_mark_mount_seen(const char *mountpoint)
 {
-struct bbg_node *n;
+	size_t i;
+	if (!mountpoint) return 0;
+	for (i = 0; i < READY_MOUNT_CNT; i++) {
+		if (strcmp(mountpoint, ready_mounts[i]) == 0) {
+			atomic_long_or(1UL << i, &ready_seen_mask);
+			return 1;
+		}
+	}
+	return 0;
+}
 
-if (!dev)
-	return;
-
+static void bbg_maybe_arm_build(void)
 {
-	struct bbg_node *cur;
-	hash_for_each_possible(bbg_protected_devs, cur, h, (u64)dev) {
-		if (cur->dev == dev)
-			return;
+	if (bbg_ready || !bbg_wq) return;
+	if (bbg_is_ready()) {
+		bbg_ready = true;
+		schedule_delayed_work(&bbg_one_shot_build, msecs_to_jiffies(bbg_post_ready_delay_ms));
+		bb_pr("armed one-shot allowlist build after readiness\n");
 	}
 }
 
-n = kmalloc(sizeof(*n), GFP_KERNEL);
-if (!n)
-	return;
-n->dev = dev;
-hash_add(bbg_protected_devs, &n->h, (u64)dev);
-
-#if BB_VERBOSE
-pr_info("baseband_guard: protect dev %u:%u\n", MAJOR(dev), MINOR(dev));
-#endif
-}
-
-static bool bbg_is_protected_dev(dev_t dev)
+static int bbg_sb_mount(const char *dev_name, const struct path *path, const char *type,
+		unsigned long flags, void *data)
 {
-struct bbg_node *cur;
-hash_for_each_possible(bbg_protected_devs, cur, h, (u64)dev) {
-	if (cur->dev == dev) return true;
+	const char *mp = NULL;
+	if (path && path->dentry)
+		mp = path->dentry->d_name.name;
+	if (bbg_mark_mount_seen(mp))
+		bbg_maybe_arm_build();
+	return 0; 
 }
-return false;
+
+static int bbg_bprm_check_security(struct linux_binprm *bprm)
+{
+	size_t i; const char *path;
+	if (!bprm || !bprm->filename)
+		return 0;
+	if (atomic_read(&bbg_bprm_built))
+		return 0;
+
+	path = bprm->filename;
+	for (i = 0; i < ZYGOTE_CAND_CNT; i++) {
+		if (strcmp(path, zygote_candidates[i]) == 0) {
+			if (bbg_is_ready() && !READ_ONCE(bbg_cache_built))
+				bbg_build_allowlist_once();
+			atomic_set(&bbg_bprm_built, 1);
+			break;
+		}
+	}
+	return 0;
+}
+
+static bool current_domain_allowed(void)
+{
+#ifdef CONFIG_SECURITY_SELINUX
+	u32 sid = 0;
+	char *ctx = NULL;
+	u32 len = 0;
+	bool ok = false;
+	size_t i;
+
+	security_cred_getsecid(current_cred(), &sid);
+	if (!sid)
+		return false;
+
+	if (security_secid_to_secctx(sid, &ctx, &len))
+		return false;
+
+	if (!ctx || !len)
+		goto out;
+
+	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
+		const char *needle = allowed_domain_substrings[i];
+		if (needle && *needle) {
+			if (strnstr(ctx, needle, len)) { ok = true; break; }
+		}
+	}
+out:
+	security_release_secctx(ctx, len);
+	return ok;
+#else
+	return false;
+#endif
 }
 
 static int deny(const char *why)
 {
-if (!BB_ENFORCING)
-	return 0;
-if (BB_ALLOW_IN_RECOVERY && in_recovery_mode())
-	return 0;
-#if BB_VERBOSE
-pr_info("baseband_guard: deny %s pid=%d comm=%s\n",
-	why, current->pid, current->comm);
-#endif
-return -EPERM;
-}
-
-
-static int bbg_try_add_one(const char *name)
-{
-char *path;
-struct path p;
-struct inode *inode;
-int ret;
-
-path = kasprintf(GFP_KERNEL, "%s/%s", BB_BYNAME_DIR, name);
-if (!path)
-	return -ENOMEM;
-
-ret = kern_path(path, LOOKUP_FOLLOW, &p);
-kfree(path);
-if (ret)
-	return ret;
-
-inode = d_backing_inode(p.dentry);
-if (inode && S_ISBLK(inode->i_mode)) {
-	bbg_protect_dev(inode->i_rdev);
-#if BB_VERBOSE
-	pr_info("baseband_guard: protect dev %u:%u for %s\n",
-		MAJOR(inode->i_rdev), MINOR(inode->i_rdev), name);
-#endif
-}
-path_put(&p);
-return 0;
-}
-
-static void bbg_scan_byname_fixedlist(void)
-{
-size_t i;
-
-for (i = 0; i < ARRAY_SIZE(qcom_core_parts); i++) {
-	const char *n = qcom_core_parts[i];
-	bbg_try_add_one(n);
-	/* 自动识别A/B分区 */
-	{
-		char buf[64];
-		if (snprintf(buf, sizeof(buf), "%s_a", n) < sizeof(buf))
-			bbg_try_add_one(buf);
-		if (snprintf(buf, sizeof(buf), "%s_b", n) < sizeof(buf))
-			bbg_try_add_one(buf);
-	}
-}
-
-#if BB_PROTECT_BOOTIMG
-for (i = 0; i < ARRAY_SIZE(bootimg_parts); i++) {
-	const char *n = bootimg_parts[i];
-	bbg_try_add_one(n);
-	{
-		char buf[64];
-		if (snprintf(buf, sizeof(buf), "%s_a", n) < sizeof(buf))
-			bbg_try_add_one(buf);
-		if (snprintf(buf, sizeof(buf), "%s_b", n) < sizeof(buf))
-			bbg_try_add_one(buf);
-	}
-}
-#endif
-}
-
-static struct delayed_work bbg_scan_work;
-static atomic_t bbg_scan_done = ATOMIC_INIT(0);
-static int bbg_scan_retries;
-
-static int bbg_protected_count(void)
-{
-struct bbg_node *cur; unsigned bkt; int n = 0;
-hash_for_each(bbg_protected_devs, bkt, cur, h) n++;
-return n;
-}
-
-static void bbg_scan_worker(struct work_struct *ws)
-{
-int before = bbg_protected_count();
-bbg_scan_byname_fixedlist();
-if (bbg_protected_count() > before) {
-	atomic_set(&bbg_scan_done, 1);
-#if BB_VERBOSE
-	pr_info("baseband_guard: scan OK, protected=%d\n", bbg_protected_count());
-#endif
-} else if (++bbg_scan_retries < BBG_SCAN_MAX_RETRY) {
-	schedule_delayed_work(&bbg_scan_work, msecs_to_jiffies(BBG_SCAN_RETRY_MS));
-#if BB_VERBOSE
-	pr_info("baseband_guard: scan retry %d (by-name not ready?)\n", bbg_scan_retries);
-#endif
-} else {
-	atomic_set(&bbg_scan_done, 1);
-#if BB_VERBOSE
-	pr_info("baseband_guard: scan give up, protected=%d\n", bbg_protected_count());
-#endif
-}
-}
-
-/* ===== LSM钩子 ===== */
-
-static int bb_file_open(struct file *file)
-{
-struct inode *inode;
-struct block_device *bdev;
-
-if (!file)
-	return 0;
-
-inode = file_inode(file);
-
-if (!S_ISBLK(inode->i_mode) || !is_write_open(file))
-	return 0;
-
-bdev = I_BDEV(inode);
-
-#if BB_BLOCK_WHOLEDISK
-if (is_wholedisk(bdev))
-	return deny("open wholedisk writable");
-#endif
-
-if (bbg_is_protected_dev(inode->i_rdev))
-	return deny("open protected partition writable");
-
-#if BB_VERBOSE
-{
-	const char *dn = (bdev && bdev->bd_disk) ? bdev->bd_disk->disk_name : "?";
-	pr_info("baseband_guard: pass blk open fmode=%x flags=%x disk=%s dev=%u:%u\n",
-		file->f_mode, file->f_flags, dn,
-		MAJOR(inode->i_rdev), MINOR(inode->i_rdev));
-}
-#endif
-return 0;
+	if (!BB_ENFORCING) return 0;
+	bb_pr_rl("deny %s pid=%d comm=%s by_qdykernel\n", why, current->pid, current->comm);
+	return -EPERM;
 }
 
 static bool is_destructive_ioctl(unsigned int cmd)
 {
-switch (cmd) {
-case BLKDISCARD:
-case BLKSECDISCARD:
-case BLKZEROOUT:
-#ifdef BLKDISCARDZEROES
-case BLKDISCARDZEROES:
-#endif
+	switch (cmd) {
+	case BLKDISCARD:
+	case BLKSECDISCARD:
+	case BLKZEROOUT:
 #ifdef BLKPG
-case BLKPG:
+	case BLKPG:
 #endif
 #ifdef BLKTRIM
-case BLKTRIM:
+	case BLKTRIM:
 #endif
-#ifdef BLKRESETZONE
-case BLKRESETZONE:
-#endif
-#ifdef BLKOPENZONE
-case BLKOPENZONE:
-#endif
-#ifdef BLKCLOSEZONE
-case BLKCLOSEZONE:
-#endif
-#ifdef BLKRMZGROUP
-case BLKRMZGROUP:
+#ifdef BLKRRPART
+	case BLKRRPART:
 #endif
 #ifdef BLKSETRO
-case BLKSETRO:
-#endif
-#ifdef BLKROSET
-case BLKROSET:
+	case BLKSETRO:
 #endif
 #ifdef BLKSETBADSECTORS
-case BLKSETBADSECTORS:
+	case BLKSETBADSECTORS:
 #endif
-case BLKRRPART:
-	return true;
-default:
-	return false;
+		return true;
+	default:
+		return false;
+	}
 }
+
+static int bb_file_permission(struct file *file, int mask)
+{
+	struct inode *inode;
+
+	if (!(mask & MAY_WRITE))
+		return 0;
+	if (!file)
+		return 0;
+
+	inode = file_inode(file);
+	if (!S_ISBLK(inode->i_mode))
+		return 0;
+		
+	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+		return 0;
+		
+	if (current_domain_allowed())
+		return 0;
+
+	return deny("write to protected partition");
 }
 
 static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-struct inode *inode;
-struct block_device *bdev;
+	struct inode *inode;
 
-if (!file)
+	if (!file)
+		return 0;
+
+	inode = file_inode(file);
+	if (!S_ISBLK(inode->i_mode))
+		return 0;
+
+	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+		return 0;
+
+	if (is_destructive_ioctl(cmd) && !current_domain_allowed())
+		return deny("destructive ioctl on protected partition");
+
 	return 0;
-
-inode = file_inode(file);
-if (!S_ISBLK(inode->i_mode))
-	return 0;
-
-bdev = I_BDEV(inode);
-
-if (bbg_is_protected_dev(inode->i_rdev)
-#if BB_BLOCK_WHOLEDISK
-	|| is_wholedisk(bdev)
-#endif
-	) {
-	if (is_destructive_ioctl(cmd))
-		return deny("destructive ioctl on protected device");
 }
 
-return 0;
-}
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
-return bb_file_ioctl(file, cmd, arg);
+	return bb_file_ioctl(file, cmd, arg);
+}
+#endif
+
+static void bbg_one_shot_build_worker(struct work_struct *ws)
+{
+	bbg_build_allowlist_once();
 }
 
 static struct security_hook_list bb_hooks[] = {
-LSM_HOOK_INIT(file_open, bb_file_open),
-LSM_HOOK_INIT(file_ioctl, bb_file_ioctl),
-LSM_HOOK_INIT(file_ioctl_compat, bb_file_ioctl_compat),
+	LSM_HOOK_INIT(file_permission,      bb_file_permission),
+	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
+#endif
+	LSM_HOOK_INIT(sb_mount,             bbg_sb_mount),
+	LSM_HOOK_INIT(bprm_check_security,  bbg_bprm_check_security),
 };
 
-static int __init bb_init(void)
+static int __init bbg_init(void)
 {
-security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks), "baseband_guard");
-INIT_DELAYED_WORK(&bbg_scan_work, bbg_scan_worker);
-schedule_delayed_work(&bbg_scan_work, msecs_to_jiffies(BBG_SCAN_DELAY_MS));
+	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks), "baseband_guard");
+	bbg_wq = alloc_ordered_workqueue("bbg_wq", WQ_UNBOUND | WQ_FREEZABLE);
+	if (!bbg_wq)
+		return -ENOMEM;
+	INIT_DELAYED_WORK(&bbg_one_shot_build, bbg_one_shot_build_worker);
+	bb_pr("init (SELinux-substr gate;by_qdykernel; quiet)\n");
+	return 0;
+}
 
-#if BB_VERBOSE
-pr_info("baseband_guard: initialized (always ENFORCING), "
-	"allow_in_recovery=%d, block_wholedisk=%d, delayed_scan=%ums\n",
-	(int)BB_ALLOW_IN_RECOVERY, (int)BB_BLOCK_WHOLEDISK,
-	(unsigned)BBG_SCAN_DELAY_MS);
-pr_info("baseband_guard: scan retry policy: %ums x %d (failure-only)\n",
-	(unsigned)BBG_SCAN_RETRY_MS, (int)BBG_SCAN_MAX_RETRY);
-#endif
-return 0;
+static void __exit bbg_exit(void)
+{
+	if (bbg_wq) {
+		cancel_delayed_work_sync(&bbg_one_shot_build);
+		destroy_workqueue(bbg_wq);
+	}
 }
 
 DEFINE_LSM(baseband_guard) = {
-.name = "baseband_guard",
-.init = bb_init,
+	.name = "baseband_guard",
+	.init = bbg_init,
 };
-MODULE_DESCRIPTION("LSM保护基带/BL引导加载程序分区（基于dev_t、扫描直接分区）");
+
+module_init(bbg_init);
+module_exit(bbg_exit);
+
+MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼");
 MODULE_LICENSE("GPL v2");
