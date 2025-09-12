@@ -1,62 +1,117 @@
 #!/bin/sh
 set -eu
 
-GKI_ROOT=$(pwd)
+GKI_ROOT="$(pwd)"
 
 display_usage() {
     echo "Usage: $0 [--cleanup | <commit-or-tag>]"
-    echo "  --cleanup:              Cleans up previous modifications made by the script."
-    echo "  -h, --help:             Displays this usage information."
-    echo "  (no args):              Sets up the Baseband-guard environment to the latest commit."
+    echo "  --cleanup            Clean up modifications made by this script."
+    echo "  -h, --help           Show this help."
+    echo "  (no args)            Setup Baseband-guard to latest main."
 }
 
 initialize_variables() {
-    if test -d "$GKI_ROOT/security"; then
-         SECURITY_DIR="$GKI_ROOT/security"
+    if [ -d "$GKI_ROOT/security" ]; then
+        SECURITY_DIR="$GKI_ROOT/security"
     else
-         echo '[ERROR] "security/" directory not found.'
-         exit 127
+        echo '[ERROR] "security/" directory not found.'
+        exit 127
     fi
-
-    SECURITY_MAKEFILE=$SECURITY_DIR/Makefile
-    SECURITY_KCONFIG=$SECURITY_DIR/Kconfig
+    SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
+    SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
+    BBG_DIR="$GKI_ROOT/Baseband-guard"
+    BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
+    BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
 }
 
-# Reverts modifications made by this script
+# Revert changes
 perform_cleanup() {
-    echo "[+] Cleaning up..."
-    [ -L "$SECURITY_DIR/baseband-guard" ] && rm "$SECURITY_DIR/baseband-guard" && echo "[-] Symlink removed."
-    grep -q "baseband-guard" "$SECURITY_MAKEFILE" && sed -i '/baseband-guard/d' "$SECURITY_MAKEFILE" && echo "[-] Makefile reverted."
-    grep -q "security/baseband-guard/Kconfig" "$SECURITY_KCONFIG" && sed -i '/security\/baseband-guard\/Kconfig/d' "$SECURITY_KCONFIG" && echo "[-] Kconfig reverted."
-    if [ -d "$GKI_ROOT/Baseband-guard" ]; then
-        rm -rf "$GKI_ROOT/Baseband-guard" && echo "[-] Baseband-guard directory deleted."
+    echo "[+] Cleaning up"
+    [ -L "$BBG_SYMLINK" ] && rm -f "$BBG_SYMLINK" && echo " - symlink removed"
+    if [ -f "$SECURITY_MAKEFILE" ] && grep -q 'baseband-guard' "$SECURITY_MAKEFILE"; then
+        sed -i '/baseband-guard/d' "$SECURITY_MAKEFILE"; echo " - Makefile reverted"
     fi
+    if [ -f "$SECURITY_KCONFIG" ] && grep -q 'security/baseband-guard/Kconfig' "$SECURITY_KCONFIG"; then
+        sed -i '/security\/baseband-guard\/Kconfig/d' "$SECURITY_KCONFIG"; echo " - Kconfig reverted"
+    fi
+    [ -d "$BBG_DIR" ] && rm -rf "$BBG_DIR" && echo " - Baseband-guard dir deleted"
 }
 
-# Sets up or update Baseband-guard environment
-setup_anti_format() {
-    echo "[+] Setting up Baseband-guard..."
-    test -d "$GKI_ROOT/Baseband-guard" || git clone https://github.com/vc-teahouse/Baseband-guard && echo "[+] Repository cloned."
-    cd "$GKI_ROOT/Baseband-guard"
-    cd "$SECURITY_DIR"
-    ln -sf "$(realpath --relative-to="$SECURITY_DIR" "$GKI_ROOT/Baseband-guard")" "baseband-guard" && echo "[+] Symlink created."
+# Setup / update
+setup_baseband_guard() {
+    ref="${1:-}"   # optional commit or tag
+    echo "[+] Setting up Baseband-guard"
 
-    # Add entries in Makefile and Kconfig if not already existing
-    grep -q "baseband-guard" "$SECURITY_MAKEFILE" || printf "\nobj-\$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband-guard/baseband_guard.o\n" >> "$SECURITY_MAKEFILE" && echo "[+] Modified Makefile."
-    grep -q "source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" || sed -i "/endmenu/i\source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" && echo "[+] Modified Kconfig."
-    echo '[+] Done.'
+    if [ -d "$BBG_DIR/.git" ]; then
+        ( cd "$BBG_DIR"
+          git fetch --depth=1 origin +refs/heads/*:refs/remotes/origin/* >/dev/null 2>&1 || true
+          if [ -n "$ref" ]; then
+              git fetch --depth=1 origin "$ref" || true
+              git checkout -q "$ref"
+          else
+              git checkout -q main || git checkout -q master || true
+              git pull --ff-only || true
+          fi
+        )
+    else
+        if [ -n "$ref" ]; then
+            git clone --depth=1 --branch "$ref" "$BBG_REPO" "$BBG_DIR"
+        else
+            git clone --depth=1 "$BBG_REPO" "$BBG_DIR"
+        fi
+        echo " - repo ready"
+    fi
+
+    # Symlink security/baseband-guard -> ../Baseband-guard
+    (
+      cd "$SECURITY_DIR"
+      # prefer relative path; fall back to absolute if realpath --relative-to not available
+      if command -v realpath >/dev/null 2>&1; then
+          rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
+      else
+          rel="$BBG_DIR"
+      fi
+      ln -sfn "$rel" "$BBG_SYMLINK"
+    )
+    echo " - symlink created"
+
+    # Makefile entry (idempotent)
+    if ! grep -q 'baseband-guard/baseband_guard.o' "$SECURITY_MAKEFILE"; then
+        printf '\nobj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband-guard/baseband_guard.o\n' >> "$SECURITY_MAKEFILE"
+        echo " - Makefile updated"
+    fi
+
+    # Kconfig source (insert before last endmenu; fallback append)
+    if ! grep -q 'security/baseband-guard/Kconfig' "$SECURITY_KCONFIG"; then
+        if grep -n '^endmenu[[:space:]]*$' "$SECURITY_KCONFIG" >/dev/null 2>&1; then
+            # insert before LAST endmenu
+            awk '
+              { a[NR]=$0 } END{
+                last=0; for(i=1;i<=NR;i++) if(a[i] ~ /^endmenu[[:space:]]*$/) last=i;
+                for(i=1;i<=NR;i++){
+                  if(i==last) print "source \"security/baseband-guard/Kconfig\"";
+                  print a[i];
+                }
+              }' "$SECURITY_KCONFIG" > "$SECURITY_KCONFIG.tmp" && mv "$SECURITY_KCONFIG.tmp" "$SECURITY_KCONFIG"
+        else
+            printf '\nsource "security/baseband-guard/Kconfig"\n' >> "$SECURITY_KCONFIG"
+        fi
+        echo " - Kconfig updated"
+    fi
+
+    echo "[+] Done."
 }
 
-# Process command-line arguments
+# Args
 if [ "$#" -eq 0 ]; then
     initialize_variables
-    setup_anti_format
-elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    setup_baseband_guard
+elif [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     display_usage
-elif [ "$1" = "--cleanup" ]; then
+elif [ "${1:-}" = "--cleanup" ]; then
     initialize_variables
     perform_cleanup
 else
     initialize_variables
-    setup_baseband-guard "$@"
+    setup_baseband_guard "$1"
 fi
