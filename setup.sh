@@ -13,6 +13,8 @@ display_usage() {
 initialize_variables() {
     if [ -d "$GKI_ROOT/security" ]; then
         SECURITY_DIR="$GKI_ROOT/security"
+    elif [ -d "$GKI_ROOT/common/security" ]; then
+	SECURITY_DIR="$GKI_ROOT/common/security"
     else
         echo '[ERROR] "security/" directory not found.'
         exit 127
