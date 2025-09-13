@@ -1,26 +1,81 @@
 menu "Baseband Security Guard Configuration"
 
 config SECURITY_BASEBAND_GUARD
-       bool "Enable Baseband Guard (Anti-Format)" 
-       default y
-       depends on SECURITY
-       help
-          Made by QiuDaoYu, Anti Format Baseband
-          If unsure, leave this y.
+bool "Baseband Guard (protect critical block devices)"
+depends on SECURITY
+default y
+help
+Enable a lightweight guard that blocks raw writes and destructive
+block device ioctls (discard, zeroout, partition table changes, etc.)
+on a curated list of sensitive Android partitions unless the caller
+runs in an allowed SELinux domain (e.g. update_engine, fastbootd,
+recovery).
+If unsure, say Y.
 
 config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
-       bool "Allow Baseband Access in Recovery Mode"
-       depends on SECURITY_BASEBAND_GUARD
-        default y
-       help
-          Allow BP In Recovery?
-          If unsure, leave this y.
+bool "Disable enforcement in recovery mode"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+If the kernel cmdline contains androidboot.mode=recovery, enforcement
+is switched to audit-only so recovery / fastbootd can legitimately
+flash images.
+Say N to enforce even in recovery.
+If unsure, say Y.
 
 config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
-        bool "Block Whole-Disk Access for Baseband"
-        default y
+bool "Also protect whole-disk devices"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+Include whole-disk parent block devices (partition number 0) in the
+protected set, not just individual named partitions.
+If unsure, say Y.
 
 config SECURITY_BASEBAND_GUARD_VERBOSE
-       bool "Log denials to dmesg"
-       default y
+bool "Verbose denial logging"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+Log detailed denial context (pid, comm, path, ioctl code, argv). Disable
+to reduce log volume on production builds.
+If unsure, say Y.
+
+endmenu
+
+Minimal-diff alternative (only fixes formatting / clarity)
+menu "Baseband Security Guard Configuration"
+
+config SECURITY_BASEBAND_GUARD
+bool "Enable Baseband Guard (Anti-Format)"
+depends on SECURITY
+default y
+help
+Anti-format protection for critical baseband / boot partitions.
+If unsure, say Y.
+
+config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
+bool "Allow Baseband Access in Recovery Mode"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+If set, enforcement is relaxed (audit-only) when in recovery mode.
+If unsure, say Y.
+
+config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
+bool "Block Whole-Disk Access for Baseband"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+Also guard the whole-disk device nodes (partition number 0).
+If unsure, say Y.
+
+config SECURITY_BASEBAND_GUARD_VERBOSE
+bool "Log denials to dmesg"
+depends on SECURITY_BASEBAND_GUARD
+default y
+help
+Log each denied/destructive attempt.
+If unsure, say Y.
+
 endmenu
