@@ -29,7 +29,7 @@
 #define BB_BYNAME_DIR "/dev/block/by-name"
 
 static const char * const allowed_domain_substrings[] = {
-    "update_engine",
+	"update_engine",
 	"fastbootd",
 	"recovery",
 	"rmt_storage",
@@ -37,11 +37,11 @@ static const char * const allowed_domain_substrings[] = {
 	"oppo",
 	"feature",
 	"swap",
-    "system_perf_init",
-    "hal_bootctl_default",
-    "fsck",
-    "vendor_qti",
-    "mi_ric",
+	"system_perf_init",
+	"hal_bootctl_default",
+	"fsck",
+	"vendor_qti",
+	"mi_ric",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
