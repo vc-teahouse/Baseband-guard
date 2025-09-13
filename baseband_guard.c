@@ -29,7 +29,7 @@
 #define BB_BYNAME_DIR "/dev/block/by-name"
 
 static const char * const allowed_domain_substrings[] = {
-     "update_engine",
+    "update_engine",
 	"fastbootd",
 	"recovery",
 	"rmt_storage",
@@ -37,6 +37,11 @@ static const char * const allowed_domain_substrings[] = {
 	"oppo",
 	"feature",
 	"swap",
+    "system_perf_init",
+    "hal_bootctl_default",
+    "fsck",
+    "vendor_qti",
+    "mi_ric",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
@@ -61,20 +66,35 @@ static const char *slot_suffix_from_cmdline(void)
 static bool resolve_byname_dev(const char *name, dev_t *out)
 {
 	char *path;
-	dev_t dev;
-	int ret;
+	
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
+       struct block_device *bdev;
+#else
+        dev_t dev;
+		int ret;
+#endif
 
 	if (!name || !out) return false;
 
 	path = kasprintf(GFP_KERNEL, "%s/%s", BB_BYNAME_DIR, name);
 	if (!path) return false;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
+        bdev = lookup_bdev(path);
+        kfree(path);
+        if (IS_ERR(bdev))
+            return false;
+        *out = bdev->bd_dev;
+        bdput(bdev);
+        return true;
+#else
 	ret = lookup_bdev(path, &dev);
 	kfree(path);
 	if (ret) return false;
 
 	*out = dev;
 	return true;
+#endif
 }
 
 struct allow_node { dev_t dev; struct hlist_node h; };
@@ -346,3 +366,4 @@ DEFINE_LSM(baseband_guard) = {
 MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼&https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
