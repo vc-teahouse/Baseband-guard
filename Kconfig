@@ -5,22 +5,44 @@ config SECURITY_BASEBAND_GUARD
        default y
        depends on SECURITY
        help
-          Made by QiuDaoYu, Anti Format Baseband
+          An Android baseband anti-formatting protector 
+          module by Github@showdo, preventing malicious
+          scripts or programs writing into important
+          function partitions.
           If unsure, leave this y.
 
 config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
-       bool "Allow Baseband Access in Recovery Mode"
+       bool "Turn off Baseband Protect in Recovery Mode"
        depends on SECURITY_BASEBAND_GUARD
-        default y
+       default y
        help
-          Allow BP In Recovery?
+          Turn off protection in recovery mode, in
+          order that repairing system partitions can
+          be done in recovery mode.
           If unsure, leave this y.
 
-config SECURITY_BASEBAND_GUARD_BLOCK_WHOLEDISK
-        bool "Block Whole-Disk Access for Baseband"
-        default y
+config SECURITY_BASEBAND_GUARD_BLOCK_BOOT
+       bool "Enable Baseband Protect for Boot Partition"
+       depends on SECURITY_BASEBAND_GUARD
+       default n
+       help
+          Enable protection for boot partition to
+          prevent malicious scripts or programs
+          destroying, however this may cause failure
+          when flashing kernels in Android system
+          (meaning that you'll only be able to flash
+          kernels/boot partition image in recovery/
+          fastboot mode).
+          If unsure, leave this n.
 
-config SECURITY_BASEBAND_GUARD_VERBOSE
-       bool "Log denials to dmesg"
+config SECURITY_BASEBAND_GUARD_DEBUG
+       bool "Output details to log for debugging"
+       depends on SECURITY_BASEBAND_GUARD
        default y
+       help
+          Output details about rejected requests
+          (Rejected process name & domain) to dmesg
+          log for debugging.
+          If unsure, leave this y.
+
 endmenu

@@ -17,10 +17,10 @@
 
 #define BB_ENFORCING 1
 
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_VERBOSE
-#define BB_VERBOSE 1
+#ifdef CONFIG_SECURITY_BASEBAND_GUARD_DEBUG
+#define BB_DEBUG 1
 #else
-#define BB_VERBOSE 0
+#define BB_DEBUG 0
 #endif
 
 #define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
@@ -31,7 +31,9 @@
 static const char * const allowed_domain_substrings[] = {
 	"update_engine",
 	"fastbootd",
+#ifdef CONFIG_SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
 	"recovery",
+#endif
 	"rmt_storage",
 	"oplus",
 	"oppo",
@@ -46,7 +48,10 @@ static const char * const allowed_domain_substrings[] = {
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
 static const char * const allowlist_names[] = {
-	"boot", "init_boot", "dtbo", "vendor_boot",
+#ifndef CONFIG_SECURITY_BASEBAND_GUARD_BLOCK_BOOT
+	"boot", "init_boot",
+#endif
+	"dtbo", "vendor_boot",
 	"userdata", "cache", "metadata", "misc",
 };
 static const size_t allowlist_cnt = ARRAY_SIZE(allowlist_names);
@@ -116,7 +121,7 @@ static void allow_add(dev_t dev)
 	if (!n) return;
 	n->dev = dev;
 	hash_add(allowed_devs, &n->h, (u64)dev);
-#if BB_VERBOSE
+#if BB_DEBUG
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
 #endif
 }
@@ -230,7 +235,7 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	if (cmdbuf)
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
-#if BB_VERBOSE
+#if BB_DEBUG
 	if (cmd_opt) {
 		pr_info_ratelimited(
 			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
