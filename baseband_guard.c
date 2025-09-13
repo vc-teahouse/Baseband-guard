@@ -80,13 +80,13 @@ static bool resolve_byname_dev(const char *name, dev_t *out)
 	if (!path) return false;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-        bdev = lookup_bdev(path);
-        kfree(path);
-        if (IS_ERR(bdev))
-            return false;
-        *out = bdev->bd_dev;
-        bdput(bdev);
-        return true;
+	bdev = lookup_bdev(path);
+	kfree(path);
+	if (IS_ERR(bdev))
+		return false;
+	*out = bdev->bd_dev;
+	bdput(bdev);
+	return true;
 #else
 	ret = lookup_bdev(path, &dev);
 	kfree(path);
