@@ -15,6 +15,17 @@
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0) && defined(CONFIG_SECURITY_SELINUX)
+struct task_security_struct {
+	u32 osid;		/* SID prior to last execve */
+	u32 sid;		/* current SID */
+	u32 exec_sid;		/* exec SID */
+	u32 create_sid;		/* fscreate SID */
+	u32 keycreate_sid;	/* keycreate SID */
+	u32 sockcreate_sid;	/* fscreate SID */
+};
+#endif
+
 #define BB_ENFORCING 1
 
 #ifdef CONFIG_SECURITY_BASEBAND_GUARD_DEBUG
@@ -73,10 +84,10 @@ static bool resolve_byname_dev(const char *name, dev_t *out)
 	char *path;
 	
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-       struct block_device *bdev;
+    struct block_device *bdev;
 #else
-        dev_t dev;
-		int ret;
+    dev_t dev;
+	int ret;
 #endif
 
 	if (!name || !out) return false;
@@ -180,7 +191,14 @@ static bool current_domain_allowed(void)
 	bool ok = false;
 	size_t i;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 	security_cred_getsecid(current_cred(), &sid);
+#else // #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+	const struct task_security_struct *tsec;
+
+	tsec = current_cred()->security;
+	sid = tsec->sid;
+#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 	if (!sid) return false;
 	if (security_secid_to_secctx(sid, &ctx, &len)) return false;
 	if (!ctx || !len) goto out;
@@ -194,9 +212,9 @@ static bool current_domain_allowed(void)
 out:
 	security_release_secctx(ctx, len);
 	return ok;
-#else
+#else // #ifdef CONFIG_SECURITY_SELINUX
 	return false;
-#endif
+#endif // #ifdef CONFIG_SECURITY_SELINUX
 }
 
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
@@ -363,12 +381,17 @@ static int __init bbg_init(void)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0)
+security_initcall(bbg_init);
+#else
 DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
 };
+#endif
 
 MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼&https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
