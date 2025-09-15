@@ -79,7 +79,7 @@ setup_baseband_guard() {
 
     # Makefile entry (idempotent)
     if ! grep -q 'baseband-guard/baseband_guard.o' "$SECURITY_MAKEFILE"; then
-        printf '\nobj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband-guard/baseband_guard.o\n' >> "$SECURITY_MAKEFILE"
+        printf '\nobj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband-guard/\n' >> "$SECURITY_MAKEFILE"
         echo " - Makefile updated"
     fi
 
