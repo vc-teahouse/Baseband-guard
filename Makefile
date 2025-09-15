@@ -1,0 +1,1 @@
+obj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband_guard.o
