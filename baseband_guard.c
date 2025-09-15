@@ -79,14 +79,14 @@ static const char *slot_suffix_from_cmdline(void)
 	return NULL;
 }
 
-static bool resolve_byname_dev(const char *name, dev_t *out)
+static bool inline resolve_byname_dev(const char *name, dev_t *out)
 {
 	char *path;
-	
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-    struct block_device *bdev;
+  struct block_device *bdev;
 #else
-    dev_t dev;
+  dev_t dev;
 	int ret;
 #endif
 
@@ -137,7 +137,7 @@ static void allow_add(dev_t dev)
 #endif
 }
 
-static bool is_allowed_partition_dev_resolve(dev_t cur)
+static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 {
 	size_t i;
 	dev_t dev;
@@ -301,9 +301,9 @@ static int bb_file_permission(struct file *file, int mask)
 	if (!file) return 0;
 
 	inode = file_inode(file);
-	if (!S_ISBLK(inode->i_mode)) return 0;
+	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (current_domain_allowed())
+	if (likely(current_domain_allowed()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -312,7 +312,7 @@ static int bb_file_permission(struct file *file, int mask)
 	return deny("write to protected partition", file, 0);
 }
 
-static bool is_destructive_ioctl(unsigned int cmd)
+static inline bool is_destructive_ioctl(unsigned int cmd)
 {
 	switch (cmd) {
 	case BLKDISCARD:
@@ -345,12 +345,12 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	if (!file) return 0;
 	inode = file_inode(file);
-	if (!S_ISBLK(inode->i_mode)) return 0;
+	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
 	if (!is_destructive_ioctl(cmd))
 		return 0;
 
-	if (current_domain_allowed())
+	if (likely(current_domain_allowed()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
