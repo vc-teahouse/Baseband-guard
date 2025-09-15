@@ -104,10 +104,37 @@ setup_baseband_guard() {
     echo "[+] Done."
 }
 
+show_config_lsm_notice() {
+    if awk '/^[[:space:]]*config[[:space:]]+LSM$/ { found=1; exit } END { exit !found }' security/Kconfig; then
+        echo ""
+        echo "Please manually set your defconfig, select one append to your defconfig:"
+        echo ""
+        awk '
+        /^[[:space:]]*config[[:space:]]+LSM$/ { in_lsm=1; next }
+        in_lsm && /^[[:space:]]*config[[:space:]]+/ { exit }
+        in_lsm && /^[[:space:]]*default/ {
+            match($0, /"([^"]+)"/, m)
+            if ($0 ~ /if[[:space:]]+/) {
+                sub(/.*if[[:space:]]+/, "", $0)
+                cond = $0
+                print "if " cond " enabled:"
+            } else {
+                print "else:"
+            }
+            if (m[1] != "") {
+                print "CONFIG_LSM=" m[1] ",baseband_guard"
+                print ""
+            }
+        }
+        ' security/Kconfig
+    fi
+}
+
 # Args
 if [ "$#" -eq 0 ]; then
     initialize_variables
     setup_baseband_guard
+    show_config_lsm_notice
 elif [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     display_usage
 elif [ "${1:-}" = "--cleanup" ]; then
@@ -116,4 +143,5 @@ elif [ "${1:-}" = "--cleanup" ]; then
 else
     initialize_variables
     setup_baseband_guard "$1"
+    show_config_lsm_notice
 fi
