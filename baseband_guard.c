@@ -84,10 +84,10 @@ static bool resolve_byname_dev(const char *name, dev_t *out)
 	char *path;
 	
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-       struct block_device *bdev;
+    struct block_device *bdev;
 #else
-        dev_t dev;
-		int ret;
+    dev_t dev;
+	int ret;
 #endif
 
 	if (!name || !out) return false;
@@ -393,4 +393,5 @@ DEFINE_LSM(baseband_guard) = {
 MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼&https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
