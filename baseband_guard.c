@@ -5,7 +5,6 @@
 #include <linux/fs.h>
 #include <linux/binfmts.h>
 #include <linux/namei.h>
-#include <linux/blkdev.h>
 #include <linux/blk_types.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -14,17 +13,7 @@
 #include <linux/cred.h>
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0) && defined(CONFIG_SECURITY_SELINUX)
-struct task_security_struct {
-	u32 osid;		/* SID prior to last execve */
-	u32 sid;		/* current SID */
-	u32 exec_sid;		/* exec SID */
-	u32 create_sid;		/* fscreate SID */
-	u32 keycreate_sid;	/* keycreate SID */
-	u32 sockcreate_sid;	/* fscreate SID */
-};
-#endif
+#include "kernel_compat.h"
 
 #define BB_ENFORCING 1
 
@@ -82,35 +71,20 @@ static const char *slot_suffix_from_cmdline(void)
 static bool inline resolve_byname_dev(const char *name, dev_t *out)
 {
 	char *path;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-  struct block_device *bdev;
-#else
-  dev_t dev;
+	dev_t dev;
 	int ret;
-#endif
 
 	if (!name || !out) return false;
 
 	path = kasprintf(GFP_KERNEL, "%s/%s", BB_BYNAME_DIR, name);
 	if (!path) return false;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-	bdev = lookup_bdev(path);
-	kfree(path);
-	if (IS_ERR(bdev))
-		return false;
-	*out = bdev->bd_dev;
-	bdput(bdev);
-	return true;
-#else
-	ret = lookup_bdev(path, &dev);
+	ret = lookup_bdev_compat(path, &dev);
 	kfree(path);
 	if (ret) return false;
 
 	*out = dev;
 	return true;
-#endif
 }
 
 struct allow_node { dev_t dev; struct hlist_node h; };
@@ -191,14 +165,8 @@ static bool current_domain_allowed(void)
 	bool ok = false;
 	size_t i;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-	security_cred_getsecid(current_cred(), &sid);
-#else // #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-	const struct task_security_struct *tsec;
+	security_cred_getsecid_compat(current_cred(), &sid);
 
-	tsec = current_cred()->security;
-	sid = tsec->sid;
-#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 	if (!sid) return false;
 	if (security_secid_to_secctx(sid, &ctx, &len)) return false;
 	if (!ctx || !len) goto out;
@@ -212,9 +180,9 @@ static bool current_domain_allowed(void)
 out:
 	security_release_secctx(ctx, len);
 	return ok;
-#else // #ifdef CONFIG_SECURITY_SELINUX
+#else
 	return false;
-#endif // #ifdef CONFIG_SECURITY_SELINUX
+#endif
 }
 
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
