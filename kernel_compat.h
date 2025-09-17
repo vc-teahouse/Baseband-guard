@@ -10,7 +10,6 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
     }
 
     bdev = lookup_bdev(path);
-	kfree(path);
 	if (IS_ERR(bdev))
 		return 1;
 	*out = bdev->bd_dev;
@@ -27,7 +26,6 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
     }
 
     ret = lookup_bdev(path, &dev);
-	kfree(path);
 	if (ret) return ret;
 
 	*out = dev;
@@ -62,5 +60,6 @@ static inline void security_cred_getsecid_compat(const struct cred *c, u32 *seci
     security_cred_getsecid(c, secid);
 }
 #endif
+
 
 #endif
