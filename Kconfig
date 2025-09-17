@@ -22,7 +22,7 @@ config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
           If unsure, leave this y.
 
 config SECURITY_BASEBAND_GUARD_BLOCK_BOOT
-       bool "Enable Baseband Protect for Boot Partition"
+       bool "Enable Baseband Protection for Boot Partition"
        depends on SECURITY_BASEBAND_GUARD
        default n
        help
@@ -36,7 +36,7 @@ config SECURITY_BASEBAND_GUARD_BLOCK_BOOT
           If unsure, leave this n.
 
 config SECURITY_BASEBAND_GUARD_DEBUG
-       bool "Output details to log for debugging"
+       bool "Output Details to Log for Debugging"
        depends on SECURITY_BASEBAND_GUARD
        default y
        help
