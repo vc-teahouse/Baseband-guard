@@ -57,6 +57,6 @@ static inline void security_cred_getsecid_compat(const struct cred *c, u32 *seci
 }
 #else
 static inline void security_cred_getsecid_compat(const struct cred *c, u32 *secid) {
-    security_cred_getsecid(c, &sid);
+    security_cred_getsecid(c, &secid);
 }
 #endif
