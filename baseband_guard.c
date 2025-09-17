@@ -149,10 +149,40 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 	return false;
 }
 
+static bool is_zram_device(dev_t dev)
+{
+	struct block_device *bdev;
+	bool is_zram = false;
+
+	bdev = blkdev_get_by_dev(dev, FMODE_READ, THIS_MODULE);
+	if (IS_ERR(bdev))
+		return false;
+
+	if (bdev->bd_disk) {
+		if (strncmp(bdev->bd_disk->disk_name, "zram", 4) == 0) {
+			is_zram = true;
+#if BB_DEBUG
+			bb_pr("zram dev %u:%u (%s) identified, whitelisting\n",
+				MAJOR(dev), MINOR(dev), bdev->bd_disk->disk_name);
+#endif
+		}
+	}
+
+	blkdev_put(bdev, FMODE_READ);
+	return is_zram;
+}
+
 static bool reverse_allow_match_and_cache(dev_t cur)
 {
 	if (!cur) return false;
-	if (is_allowed_partition_dev_resolve(cur)) { allow_add(cur); return true; }
+	if (is_zram_device(cur)) {
+		allow_add(cur);
+		return true;
+	}
+	if (is_allowed_partition_dev_resolve(cur)) {
+		allow_add(cur);
+		return true;
+	}
 	return false;
 }
 
