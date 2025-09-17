@@ -36,7 +36,9 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
 #endif
 
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0) && defined(CONFIG_SECURITY_SELINUX)
+#ifdef CONFIG_SECURITY_SELINUX
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0)
 struct task_security_struct {
 	u32 osid;		/* SID prior to last execve */
 	u32 sid;		/* current SID */
@@ -59,4 +61,6 @@ static inline void security_cred_getsecid_compat(const struct cred *c, u32 *seci
 static inline void security_cred_getsecid_compat(const struct cred *c, u32 *secid) {
     security_cred_getsecid(c, secid);
 }
+#endif
+
 #endif
