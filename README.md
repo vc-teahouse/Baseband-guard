@@ -1,5 +1,7 @@
 # Baseband-guard
 
+**`简体中文`** | [English](README-en.md)<br>
+
 一个面向 Android 内核的轻量级 **LSM（Linux Security Module）**，用于在系统层面阻止对关键分区/设备节点的非法写入，降低基带、引导链等关键组件被恶意/误操作篡改的风险。项目当前处于 **WIP**（进行中）状态。
 
 ---
