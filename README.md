@@ -11,14 +11,7 @@
 - [工作原理（简要）](#工作原理简要)
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
-- [内核集成指南](#内核集成指南)
-- [配置项](#配置项)
-- [日志与调试](#日志与调试)
-- [兼容性与限制](#兼容性与限制)
-- [路线图](#路线图)
-- [贡献指南](#贡献指南)
 - [许可证](#许可证)
-- [致谢](#致谢)
 
 ---
 
@@ -54,71 +47,21 @@ Baseband-guard 作为 **LSM** 模块在关键文件写入路径安装钩子（�
 
 ---
 
-## 快速开始(参考)
+## 快速开始
 
-1. **拉取源码**：
+1. **运行脚本**：只需在内核源码目录下运行以下指令：
    ```bash
-   git submodule add https://github.com/vc-teahouse/Baseband-guard external/baseband_guard
+   wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
    ```
 
-2. **运行脚本（可选）**：
-   ```bash
-   cd external/baseband_guard
-   bash setup.sh
-   ```
-
-3. **启用内核配置**：在 `menuconfig` / `defconfig` 中开启：
+2. **启用内核配置**：在 `menuconfig` / `defconfig` 中开启：
    ```text
    CONFIG_SECURITY_BASEBAND_GUARD=y
    ```
 
-4. **编译与打包**：按你的项目流程重新构建内核与 `boot/vendor_boot` 镜像，并刷入测试设备。
+3. **编译与打包**：按你的项目流程重新构建内核与 `boot/vendor_boot` 镜像，并刷入测试设备。
 
-5. **验证**：在受保护目标上模拟写入，确认被拒绝并产生日志。
-
----
-
-## 内核集成指南
-
-- 修改 `Kconfig` 与 `Makefile`，为模块增加可选项并加入构建产物。  
-- 使用 `kernel_compat.h` 做不同内核接口的差异化适配。  
-- 建议源码放入 `security/baseband_guard/`，并检查路径正确性。
-
----
-
-## 配置项
-
-- **内核配置**：通过 `Kconfig` 开关模块构建/启用状态。  
-- **保护规则**：在 `baseband_guard.c` 维护匹配逻辑（如按设备路径、分区名、`/dev/block/by-name/*` 等）。
-
-> 提示：为避免 OTA/恢复流程受影响，请为**合法的系统更新路径**保留例外。
-
----
-
-## 日志与调试
-
-- **内核日志**：`dmesg` 或 `logcat -b kernel` 中可见拒绝事件。  
-- **排查建议**：确认 `lsm=` 参数、保护规则配置与不同模式（normal/recovery/fastbootd）的兼容性。
-
----
-
-## 兼容性与限制
-
-- **内核版本**：通过 `kernel_compat.h` 适配不同接口。  
-- **设备差异**：需按机型维护规则集。  
-- **与其他 LSM 并存**：注意加载顺序与钩子调用次序。  
-- **状态**：仍在 WIP 阶段，生产环境请谨慎。
-
----
-
-## 路线图
-
-- [ ] 丰富规则匹配方式  
-- [ ] OTA/恢复流程例外模板  
-- [ ] sysfs/debugfs 可运行时策略接口  
-- [ ] 单元/集成测试与 CI
-
----
+4. **验证**：在受保护目标上模拟写入，确认被拒绝并产生日志。
 
 ## 贡献指南
 
