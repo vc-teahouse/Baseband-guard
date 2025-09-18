@@ -45,4 +45,19 @@ config SECURITY_BASEBAND_GUARD_DEBUG
           log for debugging.
           If unsure, leave this y.
 
+config SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN
+       int "Anti Domain Spoof"
+       depends on SECURITY_BASEBAND_GUARD
+       default 1
+       help
+          If say 1 here, selinuxfs setenforce will get -EACCES
+          every process can't change selinux to permissive
+
+          If say 2 here, when any process change selinux to permissive once
+          bbg will not trust every domain
+
+          If say 3 here, bbg will not process spoof domain,
+          WARNING: EVERY PROCESS CAN PERMISSIVE SELINUX TO BYPASS BBG IN THIS OPTION
+          If unsure, leave this 1. 
+
 endmenu
