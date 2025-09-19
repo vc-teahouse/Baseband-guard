@@ -374,7 +374,11 @@ static struct security_hook_list bb_hooks[] = {
 
 static int __init bbg_init(void)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
 	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks), "baseband_guard");
+#else
+	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks));
+#endif
 	pr_info("baseband_guard_all power by https://t.me/qdykernel\n");
 	return 0;
 }
