@@ -12,7 +12,7 @@ $(shell sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a extern int bbg_proces
 endif
 
 ifneq ($(shell grep -q "if (!new_value && bbg_process_setpermissive())" $(srctree)/security/selinux/selinuxfs.c && echo 1 || echo 0),1)
-KERNEL_NUM := $(shell echo $$(( $(VERSION) + $(PATCHLEVEL) )) )
+KERNEL_NUM := $(shell echo $$(( $(VERSION) * 100 + $(PATCHLEVEL) )) )
 
 ifeq ($(shell [ $(KERNEL_NUM) -lt 417 ] && echo 1 || echo 0),1)
     $(info -- BBG: Inserting bbg_process_setpermissive() check into sel_write_enforce for <4.17 Kernel)
