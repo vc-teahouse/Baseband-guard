@@ -23,6 +23,17 @@
 #define BB_DEBUG 0
 #endif
 
+#if CONFIG_SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN == 1
+#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
+#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
+#elif CONFIG_SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN == 2
+#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 1
+#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
+#else
+#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
+#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
+#endif
+
 #define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
 #define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
 
@@ -186,6 +197,10 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
+#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
+static bool bbg_recently_permissive __read_mostly = false;
+#endif
+
 static bool current_domain_allowed(void)
 {
 #ifdef CONFIG_SECURITY_SELINUX
@@ -194,6 +209,10 @@ static bool current_domain_allowed(void)
 	u32 len = 0;
 	bool ok = false;
 	size_t i;
+
+#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
+	if (unlikely(bbg_recently_permissive)) return false;
+#endif
 
 	security_cred_getsecid_compat(current_cred(), &sid);
 
@@ -390,6 +409,17 @@ DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
 };
+#endif
+
+#ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+int bbg_process_setpermissive() {
+#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
+	if (!bbg_recently_permissive) bbg_recently_permissive = true;
+	return 0;
+#elif BB_ANTI_SPOOF_DISABLE_PERMISSIVE
+	return 1;
+#endif
+}
 #endif
 
 MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
