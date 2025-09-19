@@ -1,6 +1,6 @@
 menu "Baseband Security Guard Configuration"
 
-config SECURITY_BASEBAND_GUARD
+config BBG
        bool "Enable Baseband Guard (Anti-Format)" 
        default y
        depends on SECURITY
@@ -11,9 +11,9 @@ config SECURITY_BASEBAND_GUARD
           function partitions.
           If unsure, leave this y.
 
-config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
+config BBG_ALLOW_IN_RECOVERY
        bool "Turn off Baseband Protection in Recovery Mode"
-       depends on SECURITY_BASEBAND_GUARD
+       depends on BBG
        default y
        help
           Turn off protection in recovery mode, in
@@ -21,9 +21,9 @@ config SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
           be done in recovery mode.
           If unsure, leave this y.
 
-config SECURITY_BASEBAND_GUARD_BLOCK_BOOT
+config BBG_BLOCK_BOOT
        bool "Enable Baseband Protection for Boot Partition"
-       depends on SECURITY_BASEBAND_GUARD
+       depends on BBG
        default n
        help
           Enable protection for boot partition to
@@ -35,9 +35,9 @@ config SECURITY_BASEBAND_GUARD_BLOCK_BOOT
           fastboot mode).
           If unsure, leave this n.
 
-config SECURITY_BASEBAND_GUARD_DEBUG
+config BBG_DEBUG
        bool "Output Details to Log for Debugging"
-       depends on SECURITY_BASEBAND_GUARD
+       depends on BBG
        default y
        help
           Output details about rejected requests
@@ -45,9 +45,9 @@ config SECURITY_BASEBAND_GUARD_DEBUG
           log for debugging.
           If unsure, leave this y.
 
-config SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN
+config BBG_ANTI_SPOOF_DOMAIN
        int "Anti Domain Spoof"
-       depends on SECURITY_BASEBAND_GUARD
+       depends on BBG
        default 1
        help
           If say 1 here, selinuxfs setenforce will get -EACCES
