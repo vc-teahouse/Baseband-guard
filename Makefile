@@ -7,7 +7,7 @@ $(info -- BBG version: $(COMMIT_SHA))
 
 ifneq ($(shell grep -q "bbg_process_setpermissive" $(srctree)/security/selinux/selinuxfs.c; echo $$?),0)
 $(info -- BBG: Adding extern declaration of bbg_process_setpermissive to selinuxfs.c)
-$(shell sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a extern int bbg_process_setpermissive();' \
+$(shell sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a extern int bbg_process_setpermissive(void);' \
         $(srctree)/security/selinux/selinuxfs.c)
 endif
 
