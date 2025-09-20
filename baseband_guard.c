@@ -412,7 +412,7 @@ DEFINE_LSM(baseband_guard) = {
 #endif
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int bbg_process_setpermissive() {
+int bbg_process_setpermissive(void) {
 #if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
 	if (!bbg_recently_permissive) bbg_recently_permissive = true;
 	return 0;
