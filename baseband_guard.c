@@ -165,7 +165,7 @@ static bool is_zram_device(dev_t dev)
 	struct block_device *bdev;
 	bool is_zram = false;
 
-	bdev = blkdev_get_by_dev(dev, FMODE_READ, THIS_MODULE);
+	bdev = blkdev_get_by_dev_compat(dev, FMODE_READ, THIS_MODULE);
 	if (IS_ERR(bdev))
 		return false;
 
@@ -179,7 +179,7 @@ static bool is_zram_device(dev_t dev)
 		}
 	}
 
-	blkdev_put(bdev, FMODE_READ);
+	blkdev_put_compat(bdev, FMODE_READ, THIS_MODULE);
 	return is_zram;
 }
 

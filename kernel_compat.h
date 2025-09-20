@@ -33,6 +33,25 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
 }
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,5,0)
+static inline struct block_device *blkdev_get_by_dev_compat(dev_t dev, fmode_t mode, void *holder)
+{
+	return blkdev_get_by_dev(dev,mode,holder);
+}
+static inline void blkdev_put_compat(struct block_device *dev, fmode_t mode, void *holder)
+{
+	blkdev_put(dev,mode);
+}
+#else
+static inline struct block_device *blkdev_get_by_dev_compat(dev_t dev, fmode_t mode, void *holder)
+{
+	return blkdev_get_by_dev(dev,mode,holder,NULL);
+}
+static inline void blkdev_put_compat(struct block_device *dev, fmode_t mode, void *holder)
+{
+	blkdev_put(dev,holder);
+}
+#endif
 
 #ifdef CONFIG_SECURITY_SELINUX
 
@@ -63,3 +82,4 @@ static inline void security_cred_getsecid_compat(const struct cred *c, u32 *seci
 
 
 #endif
+
