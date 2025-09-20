@@ -33,6 +33,19 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
 }
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,5,0)
+struct block_device *blkdev_get_by_path_compat(const char *path, fmode_t mode,
+					void *holder) 
+{
+	return blkdev_get_by_path(path,mode,holder);
+}
+#else
+struct block_device *blkdev_get_by_path_compat(const char *path, fmode_t mode,
+					void *holder) 
+{
+	return blkdev_get_by_path(path,mode,holder,NULL);
+}
+#endif
 
 #ifdef CONFIG_SECURITY_SELINUX
 

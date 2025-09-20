@@ -165,7 +165,7 @@ static bool is_zram_device(dev_t dev)
 	struct block_device *bdev;
 	bool is_zram = false;
 
-	bdev = blkdev_get_by_dev(dev, FMODE_READ, THIS_MODULE);
+	bdev = blkdev_get_by_dev_compat(dev, FMODE_READ, THIS_MODULE);
 	if (IS_ERR(bdev))
 		return false;
 
@@ -412,7 +412,7 @@ DEFINE_LSM(baseband_guard) = {
 #endif
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int bbg_process_setpermissive() {
+int bbg_process_setpermissive(void) {
 #if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
 	if (!bbg_recently_permissive) bbg_recently_permissive = true;
 	return 0;
