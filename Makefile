@@ -1,4 +1,4 @@
-obj-$(CONFIG_SECURITY_BASEBAND_GUARD) += baseband_guard.o
+obj-$(CONFIG_BBG) += baseband_guard.o
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 COMMIT_SHA := $(shell cd $(srctree)/$(src); $(GIT_BIN) rev-parse --short=8 HEAD)

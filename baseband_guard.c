@@ -17,16 +17,16 @@
 
 #define BB_ENFORCING 1
 
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_DEBUG
+#ifdef CONFIG_BBG_DEBUG
 #define BB_DEBUG 1
 #else
 #define BB_DEBUG 0
 #endif
 
-#if CONFIG_SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN == 1
+#if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
-#elif CONFIG_SECURITY_BASEBAND_GUARD_ANTI_SPOOF_DOMAIN == 2
+#elif CONFIG_BBG_ANTI_SPOOF_DOMAIN == 2
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 1
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
 #else
@@ -42,7 +42,7 @@
 static const char * const allowed_domain_substrings[] = {
 	"update_engine",
 	"fastbootd",
-#ifdef CONFIG_SECURITY_BASEBAND_GUARD_ALLOW_IN_RECOVERY
+#ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
 	"recovery",
 #endif
 	"rmt_storage",
@@ -59,7 +59,7 @@ static const char * const allowed_domain_substrings[] = {
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
 static const char * const allowlist_names[] = {
-#ifndef CONFIG_SECURITY_BASEBAND_GUARD_BLOCK_BOOT
+#ifndef CONFIG_BBG_BLOCK_BOOT
 	"boot", "init_boot",
 #endif
 	"dtbo", "vendor_boot",
