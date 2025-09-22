@@ -24,6 +24,8 @@ initialize_variables() {
     BBG_DIR="$GKI_ROOT/Baseband-guard"
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
     BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
+    SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
+    PATCH_FILE="$BBG_DIR/sepatch.txt"
 }
 
 # Revert changes
@@ -35,6 +37,9 @@ perform_cleanup() {
     fi
     if [ -f "$SECURITY_KCONFIG" ] && grep -q 'security/baseband-guard/Kconfig' "$SECURITY_KCONFIG"; then
         sed -i '/security\/baseband-guard\/Kconfig/d' "$SECURITY_KCONFIG"; echo " - Kconfig reverted"
+    fi
+    if [ -f "${SELINUX_MAKEFILE}.bak" ]; then
+        rm -f $SELINUX_MAKEFILE && mv "${SELINUX_MAKEFILE}.bak" "$SELINUX_MAKEFILE"; echo " - Selinux Makefile reverted"
     fi
     [ -d "$BBG_DIR" ] && rm -rf "$BBG_DIR" && echo " - Baseband-guard dir deleted"
 }
@@ -100,6 +105,22 @@ setup_baseband_guard() {
         fi
         echo " - Kconfig updated"
     fi
+    
+    # Selinux Makefile patch
+    if [ ! -f "$SELINUX_MAKEFILE" ]; then
+        echo "Error: '$SELINUX_MAKEFILE' not found!"
+        exit 1
+    fi
+
+    if [ ! -f "$PATCH_FILE" ]; then
+        echo "Error: patching code '$PATCH_FILE' not found! "
+        exit 1
+    fi
+
+    cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
+    sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
+    cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
+    echo "Selinux Makefile patching done!"
 
     echo "[+] Done."
 }
