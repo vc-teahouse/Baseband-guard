@@ -4,6 +4,9 @@
 
 一个面向 Android 内核的轻量级 **LSM模块（Linux Security Module）**，用于从内核层面阻止对关键分区/设备节点的非法写入，降低基带、引导链等关键组件被恶意/误操作篡改的风险
 
+[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/Baseband_guard)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-orange.svg?logo=gnu)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+
 ---
 
 ## 目录
