@@ -60,6 +60,7 @@ Baseband-guard, as an **LSM module**, installs hooks in the kernel’s file writ
 2. **Enable kernel config**: In `menuconfig` / `defconfig`, enable:  
    ```text
    CONFIG_BBG=y
+   CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
    ```
 
 3. **Build & package**: Rebuild the kernel and `boot/vendor_boot` images according to your workflow, then flash to a test device.
