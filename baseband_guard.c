@@ -399,7 +399,7 @@ static int __init bbg_init(void)
 #else
 	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks));
 #endif
-	pr_info("baseband_guard_all power by https://t.me/qdykernel\n");
+	pr_info("baseband_guard power by https://t.me/qdykernel\n");
 	return 0;
 }
 
@@ -423,9 +423,10 @@ int bbg_process_setpermissive(void) {
 }
 #endif
 
-MODULE_DESCRIPTION("protect ALL form TG@qdykernel");
-MODULE_AUTHOR("秋刀鱼&https://t.me/qdykernel");
+MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
+MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
 
 
