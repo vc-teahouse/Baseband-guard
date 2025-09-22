@@ -59,6 +59,7 @@ Baseband-guard 作为 **LSM** 模块在关键文件写入路径安装钩子（�
 2. **启用内核配置**：在 `menuconfig` / `defconfig` 中开启：
    ```text
    CONFIG_BBG=y
+   CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
    ```
 
 3. **编译与打包**：按你的项目流程重新构建内核与 `boot/vendor_boot` 镜像，并刷入测试设备。
