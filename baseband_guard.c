@@ -53,7 +53,7 @@ static const char * const allowed_domain_substrings[] = {
 	"system_perf_init",
 	"hal_bootctl_default",
 	"fsck",
-	"vendor_qti",
+	"vendor",
 	"mi_ric",
 	"system_server",
     "minidumpreader",
@@ -427,6 +427,7 @@ int bbg_process_setpermissive(void) {
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
 
 
