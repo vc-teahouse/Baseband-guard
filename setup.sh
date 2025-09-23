@@ -126,7 +126,7 @@ setup_baseband_guard() {
 }
 
 show_config_lsm_notice() {
-    if awk '/^[[:space:]]*config[[:space:]]+LSM$/ { found=1; exit } END { exit !found }' security/Kconfig; then
+    if awk '/^[[:space:]]*config[[:space:]]+LSM$/ { found=1; exit } END { exit !found }' $SECURITY_KCONFIG; then
         echo ""
         echo "Please manually set your defconfig, select one append to your defconfig:"
         echo ""
@@ -147,7 +147,7 @@ show_config_lsm_notice() {
                 print ""
             }
         }
-        ' security/Kconfig
+        ' $SECURITY_KCONFIG
     fi
 }
 
