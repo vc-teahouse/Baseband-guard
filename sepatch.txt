@@ -1,0 +1,50 @@
+
+ifeq ($(CONFIG_BBG),y)
+
+BBG_SELINUXFS_C := $(srctree)/security/selinux/selinuxfs.c
+BBG_EXTERN_STRING := "bbg_process_setpermissive"
+BBG_HOOK_STRING := "if (!new_value && bbg_process_setpermissive())"
+
+KERNEL_NUM := $(shell echo $$(( $(VERSION) * 100 + $(PATCHLEVEL) )))
+ifeq ($(shell [ $(KERNEL_NUM) -lt 417 ] && echo true), true)
+$(info -- BBG: Patching selinuxfs for kernel < 4.17)
+define BBG_HOOK_SED_CMD
+sed -i '/if (new_value != selinux_enforcing) {/a \
+if (!new_value && bbg_process_setpermissive()) { \
+    length = -EACCES; \
+    goto out; \
+}'
+endef
+else
+$(info -- BBG: Patching selinuxfs for kernel >= 4.17)
+define BBG_HOOK_SED_CMD
+sed -i '/if (new_value != old_value) {/a \
+if (!new_value && bbg_process_setpermissive()) { \
+    length = -EACCES; \
+    goto out; \
+}'
+endef
+endif
+
+$(obj)/.bbg_patched: $(BBG_SELINUXFS_C) FORCE
+	@echo "BBG: Checking/Patching $(BBG_SELINUXFS_C)"; \
+	if ! grep -q $(BBG_EXTERN_STRING) $(BBG_SELINUXFS_C); then \
+		echo "BBG: Applying extern declaration patch..."; \
+		sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a extern int bbg_process_setpermissive(void);' $(BBG_SELINUXFS_C); \
+	fi; \
+	if ! grep -q $(BBG_HOOK_STRING) $(BBG_SELINUXFS_C); then \
+		echo "BBG: Applying hook for kernel $(VERSION).$(PATCHLEVEL)..."; \
+		$(BBG_HOOK_SED_CMD) $(BBG_SELINUXFS_C); \
+	fi; \
+	if ! grep -q $(BBG_EXTERN_STRING) $(BBG_SELINUXFS_C); then \
+		echo "ERROR: BBG Auto Hook failed! Final check failed." >&2; \
+		exit 1; \
+	fi; \
+	touch $@
+
+$(obj)/selinuxfs.o: $(obj)/.bbg_patched
+selinux-y += selinuxfs.o
+
+else
+selinux-y += selinuxfs.o
+endif

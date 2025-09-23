@@ -55,7 +55,7 @@ static const char * const allowed_domain_substrings[] = {
 	"fsck",
 	"vendor_qti",
 	"mi_ric",
-    "system_server",
+	"system_server",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
