@@ -34,10 +34,6 @@
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
 #endif
 
-/* Commit ID to string converter */
-#define __stringify_1(x)        #x
-#define __stringify(x)          __stringify_1(x)
-
 #define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
 #define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
 
