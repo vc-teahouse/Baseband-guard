@@ -57,6 +57,7 @@ static const char * const allowed_domain_substrings[] = {
 	"mi_ric",
 	"system_server",
 	"minidumpreader",
+	"bspFwUpdate",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
