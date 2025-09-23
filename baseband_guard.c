@@ -56,6 +56,7 @@ static const char * const allowed_domain_substrings[] = {
 	"vendor_qti",
 	"mi_ric",
 	"system_server",
+    "minidumpreader",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
@@ -426,6 +427,7 @@ int bbg_process_setpermissive(void) {
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
 
 
