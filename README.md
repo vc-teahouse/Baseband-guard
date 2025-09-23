@@ -62,8 +62,16 @@ Baseband-guard 作为 **LSM** 模块在关键文件写入路径安装钩子（�
 2. **启用内核配置**：在 `menuconfig` / `defconfig` 中开启：
    ```text
    CONFIG_BBG=y
-   CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
    ```
+   **特别说明**
+   - 如果你正在使用本地编译，并且并非编译后直接清空本地全部修改，请参阅setup.sh执行后的输出手动修改您的defconfig
+   - 如果你正在使用action云编译，可在构建脚本中添加
+     ```bash
+     sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' security/Kconfig
+     ```
+     在编译过程中修改默认值后进行编译
+     
+     此方法会导致执行setup.sh --cleanup时出现LSM default全部被删除的问题，故只推荐用于自动化脚本编译
 
 3. **编译与打包**：按你的项目流程重新构建内核与 `boot/vendor_boot` 镜像，并刷入测试设备。
 
