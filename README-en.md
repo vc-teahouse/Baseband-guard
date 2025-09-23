@@ -63,8 +63,14 @@ Baseband-guard, as an **LSM module**, installs hooks in the kernel’s file writ
 2. **Enable kernel config**: In `menuconfig` / `defconfig`, enable:  
    ```text
    CONFIG_BBG=y
-   CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
    ```
+   **TIPS**
+   - if you are using local compile, please follow setup.sh output to manually modify your defconfig
+   - if you are using Github Action to compile your kernel, you can add this command to your compile workflow
+     ```bash
+     sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' security/Kconfig
+     ```
+     **WARN** This method will cause setup.sh --cleanup remove ALL LSM Kconfig defaults settings, so it only recommend for automatically build script 
 
 3. **Build & package**: Rebuild the kernel and `boot/vendor_boot` images according to your workflow, then flash to a test device.
 
