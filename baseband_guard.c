@@ -34,6 +34,10 @@
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
 #endif
 
+/* Commit ID to string converter */
+#define __stringify_1(x)        #x
+#define __stringify(x)          __stringify_1(x)
+
 #define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
 #define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
 
@@ -402,7 +406,7 @@ static int __init bbg_init(void)
 	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks));
 #endif
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
-	pr_info("baseband_guard version: %s\n", BBG_VERSION);
+	pr_info("baseband_guard version: %s", __stringify(BBG_VERSION));
 	return 0;
 }
 
