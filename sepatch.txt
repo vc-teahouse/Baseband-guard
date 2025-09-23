@@ -5,9 +5,8 @@ BBG_SELINUXFS_C := $(srctree)/security/selinux/selinuxfs.c
 BBG_EXTERN_STRING := "bbg_process_setpermissive"
 BBG_HOOK_STRING := "if (!new_value && bbg_process_setpermissive())"
 
-KERNEL_NUM := $(shell echo $$(( $(VERSION) * 100 + $(PATCHLEVEL) )))
-ifeq ($(shell [ $(KERNEL_NUM) -lt 417 ] && echo true), true)
-$(info -- BBG: Patching selinuxfs for kernel < 4.17)
+ifeq ($(shell grep -q "[[:space:]]*if (new_value != selinux_enforcing) {" $(BBG_SELINUXFS_C) && echo true), true)
+$(info -- BBG: Patching selinuxfs for kernel using selinux_enforcing)
 define BBG_HOOK_SED_CMD
 sed -i '/if (new_value != selinux_enforcing) {/a \
 if (!new_value && bbg_process_setpermissive()) { \
@@ -16,7 +15,7 @@ if (!new_value && bbg_process_setpermissive()) { \
 }'
 endef
 else
-$(info -- BBG: Patching selinuxfs for kernel >= 4.17)
+$(info -- BBG: Patching selinuxfs for kernel using old_value)
 define BBG_HOOK_SED_CMD
 sed -i '/if (new_value != old_value) {/a \
 if (!new_value && bbg_process_setpermissive()) { \
