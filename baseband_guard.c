@@ -402,7 +402,7 @@ static int __init bbg_init(void)
 	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks));
 #endif
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
-	pr_info("baseband_guard version:%s", BBG_VERSION);
+	pr_info("baseband_guard version: %s\n", BBG_VERSION);
 	return 0;
 }
 
