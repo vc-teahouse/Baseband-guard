@@ -24,8 +24,8 @@
 #endif
 
 #if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
+#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
 #elif CONFIG_BBG_ANTI_SPOOF_DOMAIN == 2
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 1
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
@@ -423,6 +423,8 @@ int bbg_process_setpermissive(void) {
 	return 0;
 #elif BB_ANTI_SPOOF_DISABLE_PERMISSIVE
 	return 1;
+#else
+	return 0;
 #endif
 }
 #endif
