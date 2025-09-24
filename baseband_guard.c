@@ -41,6 +41,7 @@
 
 static const char * const allowed_domain_substrings[] = {
 	"update_engine",
+	"platform_app",
 	"fastbootd",
 #ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
 	"recovery",
