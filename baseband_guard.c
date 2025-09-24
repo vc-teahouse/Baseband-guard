@@ -423,6 +423,8 @@ int bbg_process_setpermissive(void) {
 	return 0;
 #elif BB_ANTI_SPOOF_DISABLE_PERMISSIVE
 	return 1;
+#else
+	return 0;
 #endif
 }
 #endif

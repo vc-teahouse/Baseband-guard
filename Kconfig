@@ -56,7 +56,7 @@ config BBG_ANTI_SPOOF_DOMAIN
           If say 2 here, when any process change selinux to permissive once
           bbg will not trust every domain
 
-          If say 3 here, bbg will not process spoof domain,
+          If say 3 (or any other value) here, bbg will not process spoof domain,
           WARNING: EVERY PROCESS CAN PERMISSIVE SELINUX TO BYPASS BBG IN THIS OPTION
           If unsure, leave this 1. 
 
