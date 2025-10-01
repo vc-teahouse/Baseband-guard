@@ -91,7 +91,7 @@ const struct lsm_id bbg_lsmid = {
 };
 #endif
 
-void __init security_add_hooks_compat(struct security_hook_list *hooks, int count) {
+static inline void __init security_add_hooks_compat(struct security_hook_list *hooks, int count) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
 	security_add_hooks(hooks, count, &bbg_lsmid);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
@@ -101,3 +101,4 @@ void __init security_add_hooks_compat(struct security_hook_list *hooks, int coun
 #endif
 
 }
+
