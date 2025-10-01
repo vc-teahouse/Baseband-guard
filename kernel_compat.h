@@ -1,5 +1,6 @@
 #include <linux/blkdev.h>
 #include <linux/security.h>
+#include <linux/lsm_hooks.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 static inline int lookup_bdev_compat(char *path, dev_t *out) {
@@ -83,3 +84,19 @@ static inline void security_cred_getsecid_compat(const struct cred *c, u32 *seci
 
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+const struct lsm_id bbg_lsmid = {
+	.name = "baseband_guard",
+	.id = 995,
+};
+#endif
+
+void security_add_hooks_compat(struct security_hook_list *hooks, int count) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+	security_add_hooks(hooks, count, &bbg_lsmid);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
+	security_add_hooks(hooks, count, "baseband_guard");
+#else
+	security_add_hooks(hooks, count);
+#endif
+}

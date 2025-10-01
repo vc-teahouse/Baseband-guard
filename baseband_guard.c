@@ -1,7 +1,6 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/security.h>
-#include <linux/lsm_hooks.h>
 #include <linux/fs.h>
 #include <linux/binfmts.h>
 #include <linux/namei.h>
@@ -397,11 +396,7 @@ static struct security_hook_list bb_hooks[] = {
 
 static int __init bbg_init(void)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,11,0)
-	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks), "baseband_guard");
-#else
-	security_add_hooks(bb_hooks, ARRAY_SIZE(bb_hooks));
-#endif
+	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks));
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
 	pr_info("baseband_guard version: %s", __stringify(BBG_VERSION));
 	return 0;
