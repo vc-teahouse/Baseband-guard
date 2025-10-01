@@ -101,4 +101,3 @@ static inline void __init security_add_hooks_compat(struct security_hook_list *h
 #endif
 
 }
-
