@@ -424,6 +424,56 @@ int bbg_process_setpermissive(void) {
 }
 #endif
 
+int bbg_test_domain_transition(u32 target_secid) {
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
+    u32 sid = 0;
+    char *ctx = NULL;
+    u32 len = 0;
+    int ok = 0;
+	size_t i;
+
+    security_cred_getsecid_compat(current_cred(), &sid); // 检查是否为su域
+    if (!sid)
+        return 0;
+    if (security_secid_to_secctx(sid, &ctx, &len))
+        return 0;
+
+    if (ctx && len) {
+        if (strnstr(ctx, ":su:", len)) {
+            ok = 1;
+        }
+    }
+
+    security_release_secctx(ctx, len);
+
+	if (!ok) return 0;
+	ok = 0;
+
+	if (security_secid_to_secctx(target_secid, &ctx, &len)) // 检查切换目标是否为允许操作磁盘的域
+        return 0;
+    if (!ctx || !len) goto out;
+
+	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
+		const char *needle = allowed_domain_substrings[i];
+		if (needle && *needle) {
+			if (strnstr(ctx, needle, len)) { ok = 1; break; }
+		}
+	}
+out:
+	if (ok) { // 如果全部符合，打印日志，并且根据是否强制执行来决定是否拦截域转换
+            pr_info("baseband_guard: deny domain transition, target domain: %.*s, current PID: %d\n",
+                    len, ctx, current->pid);
+        }
+	security_release_secctx(ctx, len);
+    if (!BB_ENFORCING)
+        return 0;
+
+    return ok;
+#else
+    return 0;
+#endif
+}
+
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");

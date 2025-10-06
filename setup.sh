@@ -119,6 +119,7 @@ setup_baseband_guard() {
 
     cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
     sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
+    sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
     cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
     echo "Selinux Makefile patching done!"
 
