@@ -1,49 +1,150 @@
 
 ifeq ($(CONFIG_BBG),y)
 
-BBG_SELINUXFS_C := $(srctree)/security/selinux/selinuxfs.c
-BBG_EXTERN_STRING := "bbg_process_setpermissive"
-BBG_HOOK_STRING := "if (!new_value && bbg_process_setpermissive())"
+BBG_PATCH_SCRIPT := $(obj)/bbg_patch.sh
 
-ifeq ($(shell grep -q "[[:space:]]*if (new_value != selinux_enforcing) {" $(BBG_SELINUXFS_C) && echo true), true)
-$(info -- BBG: Patching selinuxfs for kernel using selinux_enforcing)
-define BBG_HOOK_SED_CMD
-sed -i '/if (new_value != selinux_enforcing) {/a \
-if (!new_value && bbg_process_setpermissive()) { \
-    length = -EACCES; \
-    goto out; \
-}'
-endef
-else
-$(info -- BBG: Patching selinuxfs for kernel using old_value)
-define BBG_HOOK_SED_CMD
-sed -i '/if (new_value != old_value) {/a \
-if (!new_value && bbg_process_setpermissive()) { \
-    length = -EACCES; \
-    goto out; \
-}'
-endef
-endif
+$(obj)/.bbg_patched: $(src)/selinuxfs.c FORCE
+	@echo "BBG: Generating patch script $(BBG_PATCH_SCRIPT) for selinuxfs.c..."
+	@echo "#!/bin/sh" > $(BBG_PATCH_SCRIPT)
+	@echo "set -e" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "# Step 0: Handle backup and restore" >> $(BBG_PATCH_SCRIPT)
+	@echo "echo \"BBG: Preparing to patch '../$(src)/selinuxfs.c'...\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "if [ -f \"../$(src)/selinuxfs.c.orig\" ]; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "    echo \"  -- Found existing backup. Restoring from '../$(src)/selinuxfs.c.orig' before patching.\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    cp \"../$(src)/selinuxfs.c.orig\" \"../$(src)/selinuxfs.c\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "else" >> $(BBG_PATCH_SCRIPT)
+	@echo "    echo \"  -- No backup found. Creating '../$(src)/selinuxfs.c.orig'.\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    cp \"../$(src)/selinuxfs.c\" \"../$(src)/selinuxfs.c.orig\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "echo \"[DEBUG] Current Working Directory is:\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "pwd" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "echo \"BBG: Executing patch script on '../$(src)/selinuxfs.c'\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "# Step 1: Add extern declaration if needed" >> $(BBG_PATCH_SCRIPT)
+	@echo "if ! grep -q \"bbg_process_setpermissive\" \"../$(src)/selinuxfs.c\"; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "    echo \"BBG: Applying extern declaration patch...\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a \\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#ifdef CONFIG_BBG\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "extern int bbg_process_setpermissive(void);\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#endif' \"../$(src)/selinuxfs.c\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "# Step 2: Add the hook if needed" >> $(BBG_PATCH_SCRIPT)
+	@echo "if ! grep -q \"if (!new_value && bbg_process_setpermissive())\" \"../$(src)/selinuxfs.c\"; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "    echo \"BBG: Applying hook patch...\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    if grep -q \"[[:space:]]*if (new_value != selinux_enforcing) {\" \"../$(src)/selinuxfs.c\"; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "        echo \"-- BBG: Patching for kernel using 'selinux_enforcing'\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "        sed -i '/if (new_value != selinux_enforcing) {/a \\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#ifdef CONFIG_BBG\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "	if (!new_value && bbg_process_setpermissive()) {\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "		length = -EACCES;\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "		goto out;\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "	}\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#endif' \"../$(src)/selinuxfs.c\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    elif grep -q \"[[:space:]]*if (new_value != old_value) {\" \"../$(src)/selinuxfs.c\"; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "        echo \"-- BBG: Patching for kernel using 'old_value'\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "        sed -i '/if (new_value != old_value) {/a \\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#ifdef CONFIG_BBG\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "	if (!new_value && bbg_process_setpermissive()) {\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "		length = -EACCES;\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "		goto out;\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "	}\\" >> $(BBG_PATCH_SCRIPT)
+	@echo "#endif' \"../$(src)/selinuxfs.c\"" >> $(BBG_PATCH_SCRIPT)
+	@echo "    else" >> $(BBG_PATCH_SCRIPT)
+	@echo "        echo \"ERROR: BBG Auto Hook failed! Could not find a suitable anchor point.\" >&2; exit 1" >> $(BBG_PATCH_SCRIPT)
+	@echo "    fi" >> $(BBG_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "# Step 3: Final integrity check" >> $(BBG_PATCH_SCRIPT)
+	@echo "if ! grep -q \"bbg_process_setpermissive\" \"../$(src)/selinuxfs.c\"; then" >> $(BBG_PATCH_SCRIPT)
+	@echo "    echo \"ERROR: BBG Auto Hook failed! Final integrity check failed.\" >&2; exit 1" >> $(BBG_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_PATCH_SCRIPT)
+	@echo "" >> $(BBG_PATCH_SCRIPT)
+	@echo "echo \"BBG: Patching of '../$(src)/selinuxfs.c' successful.\"" >> $(BBG_PATCH_SCRIPT)
+	@chmod +x $(BBG_PATCH_SCRIPT)
+	@$(BBG_PATCH_SCRIPT)
+	@touch $@
 
-$(obj)/.bbg_patched: $(BBG_SELINUXFS_C) FORCE
-	@echo "BBG: Checking/Patching $(BBG_SELINUXFS_C)"; \
-	if ! grep -q $(BBG_EXTERN_STRING) $(BBG_SELINUXFS_C); then \
-		echo "BBG: Applying extern declaration patch..."; \
-		sed -i '/^#ifdef CONFIG_SECURITY_SELINUX_DEVELOP/a extern int bbg_process_setpermissive(void);' $(BBG_SELINUXFS_C); \
-	fi; \
-	if ! grep -q $(BBG_HOOK_STRING) $(BBG_SELINUXFS_C); then \
-		echo "BBG: Applying hook for kernel $(VERSION).$(PATCHLEVEL)..."; \
-		$(BBG_HOOK_SED_CMD) $(BBG_SELINUXFS_C); \
-	fi; \
-	if ! grep -q $(BBG_EXTERN_STRING) $(BBG_SELINUXFS_C); then \
-		echo "ERROR: BBG Auto Hook failed! Final check failed." >&2; \
-		exit 1; \
-	fi; \
-	touch $@
+BBG_HOOKS_PATCH_SCRIPT := $(obj)/bbg_patch_hooks.sh
+
+$(obj)/.bbg_hooks_patched: $(src)/hooks.c FORCE
+	@echo "BBG: Generating patch script $(BBG_HOOKS_PATCH_SCRIPT) for hooks.c..."
+	@echo "#!/bin/sh" > $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "set -e" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "# Step 0: Handle backup and restore" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "echo \"BBG: Preparing to patch '../$(src)/hooks.c'...\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if [ -f \"../$(src)/hooks.c.orig\" ]; then" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"  -- Found existing backup. Restoring from '../$(src)/hooks.c.orig' before patching.\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    cp \"../$(src)/hooks.c.orig\" \"../$(src)/hooks.c\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "else" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"  -- No backup found. Creating '../$(src)/hooks.c.orig'.\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    cp \"../$(src)/hooks.c\" \"../$(src)/hooks.c.orig\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "echo \"[DEBUG] Current Working Directory is:\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "pwd" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "echo \"BBG: Executing patch script on '../$(src)/hooks.c'\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "# Step 1: Add extern declaration if needed" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if ! grep -q \"extern int bbg_test_domain_transition(u32 target_secid);\" \"../$(src)/hooks.c\"; then" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"BBG: Applying extern declaration patch to hooks.c...\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    sed -i '/^static int check_nnp_nosuid/i \\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "#ifdef CONFIG_BBG\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "extern int bbg_test_domain_transition(u32 target_secid);\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "#endif' \"../$(src)/hooks.c\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "# Step 2: Add the hook before prepare_creds if needed" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if ! grep -q \"if (unlikely(bbg_test_domain_transition(sid)))\" \"../$(src)/hooks.c\"; then" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"BBG: Applying prepare_creds hook to hooks.c...\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    sed -i '/^[[:space:]]*new[[:space:]]*=[[:space:]]*prepare_creds[[:space:]]*(/i \\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "#ifdef CONFIG_BBG\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if (unlikely(bbg_test_domain_transition(sid))) {\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "	return -EACCES;\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "}\\" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "#endif' \"../$(src)/hooks.c\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "# Step 3: Add the hook in PROCESS__TRANSITION if needed (using awk for robustness)" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if ! grep -q \"if (unlikely(bbg_test_domain_transition(new_tsec->sid)))\" \"../$(src)/hooks.c\"; then" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"BBG: Applying PROCESS__TRANSITION hook to hooks.c...\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    awk '" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "        /PROCESS__TRANSITION/ { anchor = 1 }" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "        anchor == 1 && /if[[:space:]]*\\(rc\\)/ { in_block = 1 }" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "        anchor == 1 && in_block == 1 && /return rc;/ {" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print;" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print \"#ifdef CONFIG_BBG\";" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print \"if (unlikely(bbg_test_domain_transition(new_tsec->sid))) {\";" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print \"\treturn -EACCES;\";" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print \"}\";" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            print \"#endif\";" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            anchor = 0; in_block = 0;" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "            next;" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "        }" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "        { print }' \"../$(src)/hooks.c\" > \"../$(src)/hooks.c.awk.tmp\" && mv \"../$(src)/hooks.c.awk.tmp\" \"../$(src)/hooks.c\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "# Step 4: Final integrity check" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "if ! grep -q \"bbg_test_domain_transition\" \"../$(src)/hooks.c\"; then" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "    echo \"ERROR: BBG Auto Hook for hooks.c failed! Final integrity check failed.\" >&2; exit 1" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "fi" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@echo "echo \"BBG: Patching of '../$(src)/hooks.c' successful.\"" >> $(BBG_HOOKS_PATCH_SCRIPT)
+	@chmod +x $(BBG_HOOKS_PATCH_SCRIPT)
+	@$(BBG_HOOKS_PATCH_SCRIPT)
+	@touch $@
 
 $(obj)/selinuxfs.o: $(obj)/.bbg_patched
+$(obj)/hooks.o: $(obj)/.bbg_hooks_patched
 selinux-y += selinuxfs.o
+selinux-y += hooks.o
 
 else
 selinux-y += selinuxfs.o
+selinux-y += hooks.o
 endif
