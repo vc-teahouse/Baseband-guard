@@ -45,7 +45,7 @@ config BBG_DEBUG
           log for debugging.
           If unsure, leave this y.
 
-config CONFIG_BBG_DOMAIN_PROTECTION
+config BBG_DOMAIN_PROTECTION
        bool "Interception for malicious Selinux domain switching"
        depends on BBG
        default y
