@@ -1,7 +1,7 @@
 
 ifeq ($(CONFIG_BBG),y)
 
-SELINUXFS_PATH := $(shell find $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST)))) -type f -name 'selinuxfs.c' 2>/dev/null | head -n 1 | xargs dirname)
+SELINUXFS_PATH :=  $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
 BBG_PATCH_SCRIPT := $(obj)/bbg_patch.sh
 
