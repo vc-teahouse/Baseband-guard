@@ -21,11 +21,11 @@ initialize_variables() {
     fi
     SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
     SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
-    BBG_DIR="$GKI_ROOT/Baseband-guard/src"
+    BBG_DIR="$GKI_ROOT/Baseband-guard"
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
     BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
-    PATCH_FILE="$BBG_DIR/sepatch.txt"
+    PATCH_FILE="$BBG_DIR/src/sepatch.txt"
 }
 
 # Revert changes
@@ -78,7 +78,7 @@ setup_baseband_guard() {
       else
           rel="$BBG_DIR"
       fi
-      ln -sfn "$rel" "$BBG_SYMLINK"
+      ln -sfn "$rel/src" "$BBG_SYMLINK"
     )
     echo " - symlink created"
 
