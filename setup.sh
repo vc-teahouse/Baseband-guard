@@ -21,7 +21,7 @@ initialize_variables() {
     fi
     SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
     SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
-    BBG_DIR="$GKI_ROOT/Baseband-guard"
+    BBG_DIR="$GKI_ROOT/Baseband-guard/src"
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
     BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
