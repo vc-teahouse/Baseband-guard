@@ -51,7 +51,7 @@ setup_baseband_guard() {
 
     if [ -d "$BBG_DIR/.git" ]; then
         ( cd "$BBG_DIR"
-          git fetch  origin +refs/heads/*:refs/remotes/origin/* >/dev/null 2>&1 || true
+          git fetch origin +refs/heads/*:refs/remotes/origin/* >/dev/null 2>&1 || true
           if [ -n "$ref" ]; then
               git fetch origin "$ref" || true
               git checkout -q "$ref"
