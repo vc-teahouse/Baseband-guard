@@ -51,9 +51,9 @@ setup_baseband_guard() {
 
     if [ -d "$BBG_DIR/.git" ]; then
         ( cd "$BBG_DIR"
-          git fetch --depth=1 origin +refs/heads/*:refs/remotes/origin/* >/dev/null 2>&1 || true
+          git fetch  origin +refs/heads/*:refs/remotes/origin/* >/dev/null 2>&1 || true
           if [ -n "$ref" ]; then
-              git fetch --depth=1 origin "$ref" || true
+              git fetch origin "$ref" || true
               git checkout -q "$ref"
           else
               git checkout -q main || git checkout -q master || true
@@ -62,9 +62,9 @@ setup_baseband_guard() {
         )
     else
         if [ -n "$ref" ]; then
-            git clone --depth=1 --branch "$ref" "$BBG_REPO" "$BBG_DIR"
+            git clone --branch "$ref" "$BBG_REPO" "$BBG_DIR"
         else
-            git clone --depth=1 "$BBG_REPO" "$BBG_DIR"
+            git clone "$BBG_REPO" "$BBG_DIR"
         fi
         echo " - repo ready"
     fi
