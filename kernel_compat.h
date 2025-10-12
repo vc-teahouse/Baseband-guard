@@ -1,6 +1,8 @@
 #include <linux/blkdev.h>
 #include <linux/security.h>
 #include <linux/lsm_hooks.h>
+#include <linux/version.h>
+#include "objsec.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 static inline int lookup_bdev_compat(char *path, dev_t *out) {
@@ -91,14 +93,6 @@ static bool bbg_is_named_device(dev_t dev, const char *name_prefix)
 #ifdef CONFIG_SECURITY_SELINUX
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0)
-struct task_security_struct {
-	u32 osid;		/* SID prior to last execve */
-	u32 sid;		/* current SID */
-	u32 exec_sid;		/* exec SID */
-	u32 create_sid;		/* fscreate SID */
-	u32 keycreate_sid;	/* keycreate SID */
-	u32 sockcreate_sid;	/* fscreate SID */
-};
 static inline void security_cred_getsecid_compat(const struct cred *c, u32 *secid) {
     const struct task_security_struct *tsec;
 

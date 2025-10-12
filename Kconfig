@@ -54,26 +54,28 @@ config BBG_DOMAIN_PROTECTION
        depends on BBG
        default y
        help
-          An improved version of BBG_ANTI_SPOOF_DOMAIN's 
-          selinux state protection, which prevents malicious 
-          processes from switching selinux domain names
+          Prevents malicious processes from switching selinux domain names
           without intercepting selinux state modifications.
           If unsure, leave this y.
 
-config BBG_ANTI_SPOOF_DOMAIN
-       int "Anti Domain Spoof"
-       depends on BBG
-       default 3
+config BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+       bool "Trace all su process to block them bypass domain protection"
+       depends on BBG_DOMAIN_PROTECTION
+       default y
        help
-          If input 1: selinuxfs setenforce will get -EACCES,
-            any process cannot change selinux to permissive;
-          If input 2: when set selinux to permissive once,
-            bbg will not trust any domain;
-          If input 3: bbg will not process spoof domains.
-          NOTE: If CONFIG_BBG_DOMAIN_PROTECTION is enabled,
-            this configuration can be turned off (to avoid
-            affecting the operation of some programs that
-            need to set selinux to permissive).
-          If unsure, leave this 3. 
+          Trace the su process and all its related processes 
+          to prevent them from bypassing domain protections, 
+          but this may result in more memory usage
+          If unsure, leave this y.
+
+config BBG_DISABLE_SELINUX_PERMISSIVE
+       bool "Disable system switch selinux state to permissive"
+       depends on BBG
+       default n
+       help
+          Deny all userspace processes disable SELinux.
+          BBG doesn't need this right now.
+          But we recommand DON'T turn selinux off, so we keep it here.
+          If unsure, leave this n. 
 
 endmenu

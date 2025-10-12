@@ -13,65 +13,7 @@
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
 #include "kernel_compat.h"
-
-#define BB_ENFORCING 1
-
-#if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
-#elif CONFIG_BBG_ANTI_SPOOF_DOMAIN == 2
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 1
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
-#else
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
-#endif
-
-#define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
-#define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
-
-#define BB_BYNAME_DIR "/dev/block/by-name"
-
-static const char * const allowed_domain_substrings[] = {
-	"update_engine",
-	"platform_app",
-	"fastbootd",
-#ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
-	"recovery",
-#endif
-	"rmt_storage",
-	"oplus",
-	"oppo",
-	"feature",
-	"swap",
-	"system_perf_init",
-	"hal_bootctl_default",
-	"fsck",
-	"vendor",
-	"mi_ric",
-	"system_server",
-	"minidumpreader",
-	"bspFwUpdate",
-	"u:r:vold:s0",
- 	"kernel",
-	"tee",
-	"gsid",
-	"snapuserd",
-};
-static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
-
-static const char * const allowlist_names[] = {
-#ifndef CONFIG_BBG_BLOCK_BOOT
-	"boot", "init_boot",
-#endif
-	"dtbo", "vendor_boot",
-	"userdata", "cache", "metadata", "misc",
-	"vbmeta", "vbmeta_system", "vbmeta_vendor",
-#ifndef BBG_BLOCK_RECOVERY
-	"recovery"
-#endif
-};
-static const size_t allowlist_cnt = ARRAY_SIZE(allowlist_names);
+#include "baseband_guard.h"
 
 extern char *saved_command_line; 
 static const char *slot_suffix_from_cmdline(void)
@@ -189,8 +131,8 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-static bool bbg_recently_permissive __read_mostly = false;
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+extern int current_process_trusted(void);
 #endif
 
 static bool current_domain_allowed(void)
@@ -201,10 +143,6 @@ static bool current_domain_allowed(void)
 	u32 len = 0;
 	bool ok = false;
 	size_t i;
-
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-	if (unlikely(bbg_recently_permissive)) return false;
-#endif
 
 	security_cred_getsecid_compat(current_cred(), &sid);
 
@@ -292,9 +230,9 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 
 static int deny(const char *why, struct file *file, unsigned int cmd_opt)
 {
-	if (!BB_ENFORCING) return 0;
 	bbg_log_deny_detail(why, file, cmd_opt);
 	bb_pr_rl("deny %s pid=%d comm=%s\n", why, current->pid, current->comm);
+	if (!BB_ENFORCING) return 0;
 	return -EPERM;
 }
 
@@ -308,7 +246,7 @@ static int bb_file_permission(struct file *file, int mask)
 	inode = file_inode(file);
 	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (likely(current_domain_allowed()))
+	if (likely(current_domain_allowed() && current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -355,7 +293,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (!is_destructive_ioctl(cmd))
 		return 0;
 
-	if (likely(current_domain_allowed()))
+	if (likely(current_domain_allowed() && current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -371,9 +309,26 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 }
 #endif
 
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+extern int bb_bprm_set_creds(struct linux_binprm *bprm);
+extern void bb_cred_transfer(struct cred *new, const struct cred *old);
+extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
+#endif
+
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
+
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
+	LSM_HOOK_INIT(bprm_creds_for_exec,  bb_bprm_set_creds),
+#else
+	LSM_HOOK_INIT(bprm_set_creds, 		bb_bprm_set_creds),
+#endif
+	LSM_HOOK_INIT(cred_transfer, 		bb_cred_transfer),
+	LSM_HOOK_INIT(cred_prepare, 	    bb_cred_prepare),
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
 #endif
@@ -388,79 +343,24 @@ static int __init bbg_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+extern struct lsm_blob_sizes bbg_blob_sizes;
+#endif
+
 #ifndef BBG_USE_DEFINE_LSM
 security_initcall(bbg_init);
 #else
 DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+	.blobs = &bbg_blob_sizes
+#endif
 };
 #endif
-
-#ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int bbg_process_setpermissive(void) {
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-	if (!bbg_recently_permissive) bbg_recently_permissive = true;
-	return 0;
-#elif BB_ANTI_SPOOF_DISABLE_PERMISSIVE
-	return 1;
-#else
-	return 0;
-#endif
-}
-#endif
-
-int bbg_test_domain_transition(u32 target_secid) {
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
-    u32 sid = 0;
-    char *ctx = NULL;
-    u32 len = 0;
-    int ok = 0;
-	size_t i;
-
-    security_cred_getsecid_compat(current_cred(), &sid); // 检查是否为su域
-    if (!sid)
-        return 0;
-    if (security_secid_to_secctx(sid, &ctx, &len))
-        return 0;
-
-    if (ctx && len) {
-        if (strnstr(ctx, ":su:", len)) {
-            ok = 1;
-        }
-    }
-
-    security_release_secctx(ctx, len);
-
-	if (!ok) return 0;
-	ok = 0;
-
-	if (security_secid_to_secctx(target_secid, &ctx, &len)) // 检查切换目标是否为允许操作磁盘的域
-        return 0;
-    if (!ctx || !len) goto out;
-
-	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
-		const char *needle = allowed_domain_substrings[i];
-		if (needle && *needle) {
-			if (strnstr(ctx, needle, len)) { ok = 1; break; }
-		}
-	}
-out:
-	if (ok) { // 如果全部符合，打印日志，并且根据是否强制执行来决定是否拦截域转换
-            pr_info("baseband_guard: deny domain transition, target domain: %.*s, current PID: %d\n",
-                    len, ctx, current->pid);
-        }
-	security_release_secctx(ctx, len);
-    if (!BB_ENFORCING)
-        return 0;
-
-    return ok;
-#else
-    return 0;
-#endif
-}
 
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 
