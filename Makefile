@@ -1,4 +1,8 @@
 obj-$(CONFIG_BBG) += baseband_guard.o
+obj-$(CONFIG_BBG_DOMAIN_PROTECTION) += selinux/selinux.o
+
+ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
+ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 

@@ -1,0 +1,54 @@
+#define BB_ENFORCING 1
+
+#ifdef CONFIG_BBG_DEBUG
+#define BB_DEBUG 1
+#else
+#define BB_DEBUG 0
+#endif
+
+#define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
+#define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
+
+#define BB_BYNAME_DIR "/dev/block/by-name"
+
+static const char * const allowed_domain_substrings[] = {
+	"update_engine",
+	"platform_app",
+	"fastbootd",
+#ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
+	"recovery",
+#endif
+	"rmt_storage",
+	"oplus",
+	"oppo",
+	"feature",
+	"swap",
+	"system_perf_init",
+	"hal_bootctl_default",
+	"fsck",
+	"vendor",
+	"mi_ric",
+	"system_server",
+	"minidumpreader",
+	"bspFwUpdate",
+	"u:r:vold:s0",
+	"kernel",
+	"tee",
+	"gsid",
+	"snapuserd",
+};
+
+static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
+
+static const char * const allowlist_names[] = {
+#ifndef CONFIG_BBG_BLOCK_BOOT
+	"boot", "init_boot",
+#endif
+	"dtbo", "vendor_boot",
+	"userdata", "cache", "metadata", "misc",
+	"vbmeta", "vbmeta_system", "vbmeta_vendor",
+#ifndef BBG_BLOCK_RECOVERY
+	"recovery"
+#endif
+};
+static const size_t allowlist_cnt = ARRAY_SIZE(allowlist_names);
