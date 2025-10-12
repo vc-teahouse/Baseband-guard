@@ -9,12 +9,13 @@ ifeq ($(strip $(COMMIT_SHA)),)
 endif
 
 ifneq ($(findstring baseband_guard,$(CONFIG_LSM)),baseband_guard)
-$(info -- ERROR: BBG not enable in CONFIG_LSM, but CONFIG_BBG is y)
-$(info -- ERROR: Please follow our README.md, to correct integrate)
+$(info -- Baseband-guard: BBG not enable in CONFIG_LSM, but CONFIG_BBG is y)
+$(info -- Baseband-guard: Please follow our README.md, to correct integrate)
 $(error BBG not enable)
 endif
 
 $(info -- BBG was enabled!)
 $(info -- BBG version: $(COMMIT_SHA))
 ccflags-y += -DBBG_VERSION=$(COMMIT_SHA)
+
 
