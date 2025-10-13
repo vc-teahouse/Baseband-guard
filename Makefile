@@ -8,6 +8,11 @@ ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
 endif
 
+ifneq ($(findstring baseband_guard,$(CONFIG_LSM)),baseband_guard)
+$(info -- Baseband-guard: BBG not enable in CONFIG_LSM, but CONFIG_BBG is y,abort...)
+$(error Baseband-guard: Please follow our README.md, to correct integrate)
+endif
+
 $(info -- BBG was enabled!)
 $(info -- BBG version: $(COMMIT_SHA))
 ccflags-y += -DBBG_VERSION=$(COMMIT_SHA)
