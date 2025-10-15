@@ -12,7 +12,7 @@ endif
 
 ifeq ($(CONFIG_BBG),y)
   $(info -- Baseband-guard: CONFIG_BBG enabled, now checking...)
-  $(info BBG_DEBUG -- CONFIG_LSM value: $(CONFIG_LSM))
+  $(info -- CONFIG_LSM value: $(CONFIG_LSM))
   ifeq ($(shell test $(VERSION) -ge 5; echo $$?),0)
     ifneq ($(findstring baseband_guard,$(CONFIG_LSM)),baseband_guard)
       $(info -- Baseband-guard: BBG not enable in CONFIG_LSM, but CONFIG_BBG is y,abort...)
