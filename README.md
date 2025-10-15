@@ -67,7 +67,7 @@ Baseband-guard 作为 **LSM** 模块在关键文件写入路径安装钩子（�
    - 如果你正在使用本地编译，请参阅setup.sh执行后的输出手动修改您的defconfig
    - 如果你正在使用Github Action云编译，可在构建脚本中添加
      ```bash
-     sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' security/Kconfig
+     sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' security/Kconfig
      ```     
      **警告** 此方法会导致执行setup.sh --cleanup时出现LSM Kconfig配置中default全部被删除的问题，故只推荐用于自动化脚本编译
 
