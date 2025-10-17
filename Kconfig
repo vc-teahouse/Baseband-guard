@@ -35,16 +35,6 @@ config BBG_BLOCK_BOOT
           fastboot mode).
           If unsure, leave this n.
 
-config BBG_DEBUG
-       bool "Output Details to Log for Debugging"
-       depends on BBG
-       default y
-       help
-          Output details about rejected requests
-          (Rejected process name & domain) to dmesg
-          log for debugging.
-          If unsure, leave this y.
-
 config BBG_DOMAIN_PROTECTION
        bool "Interception for malicious Selinux domain switching"
        depends on BBG
