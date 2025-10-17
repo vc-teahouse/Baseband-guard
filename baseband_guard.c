@@ -16,7 +16,6 @@
 
 #define BB_ENFORCING 1
 
-
 #if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
@@ -53,6 +52,7 @@ static const char * const allowed_domain_substrings[] = {
 	"system_server",
 	"minidumpreader",
 	"bspFwUpdate",
+    "u:r:vold:s0"
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
@@ -464,3 +464,4 @@ out:
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
