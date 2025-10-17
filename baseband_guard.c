@@ -260,6 +260,11 @@ static int bbg_get_cmdline(char *buf, int buflen)
 
 static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int cmd_opt)
 {
+#if BB_DEBUG
+	u32 sid = 0;
+	char *ctx = NULL;
+	u32 len = 0;
+#endif
 	const int PATH_BUFLEN = 256;
 	const int CMD_BUFLEN  = 256;
 
@@ -274,17 +279,25 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
 #if BB_DEBUG
+
+	security_cred_getsecid_compat(current_cred(), &sid);
+
+	if (!sid || security_secid_to_secctx(sid, &ctx, &len) || !ctx || !len) {
+		ctx = "unknown";
+		len = strlen("unknown");
+	}
+
 	if (cmd_opt) {
-		pr_info_ratelimited(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
+		pr_info(
+			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
 			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
+			path ? path : "?", current->pid, len, ctx, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	} else {
-		pr_info_ratelimited(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
+		pr_info(
+			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
 			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
+			path ? path : "?", current->pid, len, ctx, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	}
 #else
