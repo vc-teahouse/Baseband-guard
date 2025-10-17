@@ -16,12 +16,6 @@
 
 #define BB_ENFORCING 1
 
-#ifdef CONFIG_BBG_DEBUG
-#define BB_DEBUG 1
-#else
-#define BB_DEBUG 0
-#endif
-
 #if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
 #define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
 #define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
@@ -120,9 +114,7 @@ static void allow_add(dev_t dev)
 	if (!n) return;
 	n->dev = dev;
 	hash_add(allowed_devs, &n->h, (u64)dev);
-#if BB_DEBUG
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
-#endif
 }
 
 static inline bool is_allowed_partition_dev_resolve(dev_t cur)
@@ -175,10 +167,8 @@ static bool is_zram_device(dev_t dev)
 	if (bdev->bd_disk) {
 		if (strncmp(bdev->bd_disk->disk_name, "zram", 4) == 0) {
 			is_zram = true;
-#if BB_DEBUG
 			bb_pr("zram dev %u:%u (%s) identified, whitelisting\n",
 				MAJOR(dev), MINOR(dev), bdev->bd_disk->disk_name);
-#endif
 		}
 	}
 
@@ -273,7 +263,6 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	if (cmdbuf)
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
-#if BB_DEBUG
 	if (cmd_opt) {
 		pr_info_ratelimited(
 			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
@@ -287,19 +276,6 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 			path ? path : "?", current->pid, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	}
-#else
-	if (cmd_opt) {
-		pr_info_ratelimited(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d\n",
-			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid);
-	} else {
-		pr_info_ratelimited(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d\n",
-			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid);
-	}
-#endif
 
 	kfree(cmdbuf);
 	kfree(pathbuf);

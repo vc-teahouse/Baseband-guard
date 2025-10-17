@@ -29,5 +29,3 @@ endif
 $(info -- BBG was enabled!)
 $(info -- BBG version: $(COMMIT_SHA))
 ccflags-y += -DBBG_VERSION=$(COMMIT_SHA)
-
-
