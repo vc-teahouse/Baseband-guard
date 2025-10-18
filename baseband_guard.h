@@ -34,6 +34,7 @@ static const char * const allowed_domain_substrings[] = {
 	"u:r:vold:s0",
 	"kernel",
 	"tee",
+	"u:r:ueventd:s0",
 	"gsid",
 	"snapuserd",
 };

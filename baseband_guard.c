@@ -185,7 +185,7 @@ static int bbg_get_cmdline(char *buf, int buflen)
 	return n;
 }
 
-static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int cmd_opt)
+static void bbg_log_deny_detail(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
 	u32 sid = 0;
 	char *ctx = NULL;
@@ -197,7 +197,6 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	char *cmdbuf  = kmalloc(CMD_BUFLEN,  GFP_ATOMIC);
 
 	const char *path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
-	struct inode *inode = file ? file_inode(file) : NULL;
 	dev_t dev = inode ? inode->i_rdev : 0;
 
 	if (cmdbuf)
@@ -228,9 +227,9 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	kfree(pathbuf);
 }
 
-static int deny(const char *why, struct file *file, unsigned int cmd_opt)
+static int deny(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
-	bbg_log_deny_detail(why, file, cmd_opt);
+	bbg_log_deny_detail(why, file, inode, cmd_opt);
 	bb_pr_rl("deny %s pid=%d comm=%s\n", why, current->pid, current->comm);
 	if (!BB_ENFORCING) return 0;
 	return -EPERM;
@@ -252,7 +251,29 @@ static int bb_file_permission(struct file *file, int mask)
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
 		return 0;
 
-	return deny("write to protected partition", file, 0);
+	return deny("write to protected partition", file, inode, 0);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static int bb_inode_setattr(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *iattr)
+#else
+static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr) 
+#endif
+{
+	struct inode *inode;
+    if (!dentry || !iattr) return 0;
+    inode = d_inode(dentry);
+	if (!inode) return 0;
+
+	if (likely(!S_ISBLK(inode->i_mode))) return 0;
+
+	if (likely(current_domain_allowed() && current_process_trusted()))
+		return 0;
+
+	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+		return 0;
+
+	return deny("setattr on protected partition", 0, inode, 0);
 }
 
 static inline bool is_destructive_ioctl(unsigned int cmd)
@@ -299,7 +320,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
 		return 0;
 
-	return deny("destructive ioctl on protected partition", file, cmd);
+	return deny("destructive ioctl on protected partition", file, inode, cmd);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
@@ -318,6 +339,7 @@ extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
+	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
 
 #ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
