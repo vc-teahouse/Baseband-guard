@@ -389,7 +389,7 @@ static int __init bbg_init(void)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0)
+#ifndef BBG_USE_DEFINE_LSM
 security_initcall(bbg_init);
 #else
 DEFINE_LSM(baseband_guard) = {

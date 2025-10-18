@@ -29,3 +29,9 @@ endif
 $(info -- BBG was enabled!)
 $(info -- BBG version: $(COMMIT_SHA))
 ccflags-y += -DBBG_VERSION=$(COMMIT_SHA)
+
+# kernel compatible
+ifeq ($(shell grep -q "#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true),true)
+  $(info -- Baseband_guard: Found DEFINE_LSM!)
+  ccflags-y += -DBBG_USE_DEFINE_LSM
+endif
