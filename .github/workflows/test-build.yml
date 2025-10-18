@@ -7,6 +7,7 @@ permissions:
 on:
   push:
   workflow_dispatch:
+  pull_request:
 
 jobs:
   build-check:
@@ -81,10 +82,15 @@ jobs:
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+          mkdir -p "$CONFIG"
+
+      - name: Get Baseband-guard Source
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.CONFIG }}/Baseband-guard
 
       - name: Initialize and Sync Kernel Source
         run: |
-          mkdir -p "$CONFIG"
           cd "$CONFIG"
           
           FORMATTED_BRANCH="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}-${{ matrix.kernel_config.os_patch_level }}"
@@ -102,10 +108,32 @@ jobs:
       - name: Add BBG
         run: |
           cd "$CONFIG"
+          BBG_DIR="$(pwd)/Baseband-guard"
+          SECURITY_DIR="$(pwd)/common/security"
+          SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
+          SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
+          BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
+          SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
+          PATCH_FILE="$BBG_DIR/sepatch.txt"
           echo "Adding BBG..."
-          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
-          echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
-           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' common/security/Kconfig
+          # prefer relative path; fall back to absolute if realpath --relative-to not available
+          if command -v realpath >/dev/null 2>&1; then
+              rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
+          else
+              rel="$BBG_DIR"
+          fi
+          ln -sfn "$rel" "$BBG_SYMLINK" && echo "- symlink created"
+          # Makefile entry (idempotent)
+          printf '\nobj-$(CONFIG_BBG) += baseband-guard/\n' >> "$SECURITY_MAKEFILE" && echo " - Makefile updated"
+          # Kconfig source (insert before last endmenu; fallback append)
+          grep -q "source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" || sed -i "/endmenu/i\source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" && echo " - Kconfig updated"
+          # apply sepatch.txt
+          cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
+          sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
+          sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
+          cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
+          echo "Selinux Makefile patching done!"
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' $SECURITY_KCONFIG
 
       - name: Apply Kernel Configuration
         run: |
