@@ -1,0 +1,126 @@
+name: Build Check - All LTS Kernels
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel_config:
+          # Android 12 - Kernel 5.10 LTS
+          - android_version: "android12"
+            kernel_version: "5.10"
+            sub_level: "X"
+            os_patch_level: "lts"
+          
+          # Android 13 - Kernel 5.10 LTS
+          - android_version: "android13"
+            kernel_version: "5.10"
+            sub_level: "X"
+            os_patch_level: "lts"
+          
+          # Android 13 - Kernel 5.15 LTS
+          - android_version: "android13"
+            kernel_version: "5.15"
+            sub_level: "X"
+            os_patch_level: "lts"
+          
+          # Android 14 - Kernel 5.15 LTS
+          - android_version: "android14"
+            kernel_version: "5.15"
+            sub_level: "X"
+            os_patch_level: "lts"
+          
+          # Android 14 - Kernel 6.1 LTS
+          - android_version: "android14"
+            kernel_version: "6.1"
+            sub_level: "X"
+            os_patch_level: "lts"
+          
+          # Android 15 - Kernel 6.6 LTS
+          - android_version: "android15"
+            kernel_version: "6.6"
+            sub_level: "X"
+            os_patch_level: "lts"
+
+    name: Build Check - ${{ matrix.kernel_config.android_version }} (Kernel ${{ matrix.kernel_config.kernel_version }})
+    
+    steps:
+      - name: Maximize Build Space
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-dotnet: 'true'          # Frees ~2 GB
+          remove-android: 'true'         # Frees ~9 GB
+          remove-haskell: 'true'         # Frees ~5.2 GB
+          remove-codeql: 'true'          # Frees ~5.4 GB
+          remove-docker-images: 'true'   # Frees ~3.2 GB
+          remove-large-packages: 'true'  # Frees ~3.1 GB
+          remove-swapfile: 'true'        # Frees ~4 GB
+          remove-cached-tools: 'false'   # Avoid unless confirmed safe
+          verbose: 'true'                # Enable detailed logging
+
+      - name: Set CONFIG Environment Variable
+        run: |
+          # Set CONFIG dynamically based on matrix values
+          CONFIG="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}-${{ matrix.kernel_config.sub_level }}"
+
+          # Set CONFIG as an environment variable for future steps
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+
+      - name: Setup Build Environment
+        run: |
+          mkdir -p ./git-repo
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+          chmod a+rx ./git-repo/repo
+          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+
+      - name: Initialize and Sync Kernel Source
+        run: |
+          mkdir -p "$CONFIG"
+          cd "$CONFIG"
+          
+          FORMATTED_BRANCH="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}-${{ matrix.kernel_config.os_patch_level }}"
+          
+          $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
+          
+          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
+          DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
+          if grep -q deprecated <<< $REMOTE_BRANCH; then
+            sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
+          fi
+          
+          $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+
+      - name: Add BBG
+        run: |
+          cd "$CONFIG"
+          echo "Adding BBG..."
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+          echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
+           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' common/security/Kconfig
+
+      - name: Apply Kernel Configuration
+        run: |
+          cd "$CONFIG"
+          # Remove check_defconfig
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+
+      - name: Build
+        run : |
+          set -e
+          set -x
+          cd "$CONFIG"
+          echo "Building the kernel..."
+          if [ -f "build/build.sh" ]; then
+            LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh || exit 1
+          else
+            tools/bazel build --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+          fi
