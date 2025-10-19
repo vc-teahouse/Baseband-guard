@@ -61,18 +61,18 @@ jobs:
     name: Build Check - ${{ matrix.kernel_config.android_version }} (Kernel ${{ matrix.kernel_config.kernel_version }})
     
     steps:
-      - name: Maximize Build Space
-        uses: AdityaGarg8/remove-unwanted-software@v5
-        with:
-          remove-dotnet: 'true'          # Frees ~2 GB
-          remove-android: 'true'         # Frees ~9 GB
-          remove-haskell: 'true'         # Frees ~5.2 GB
-          remove-codeql: 'true'          # Frees ~5.4 GB
-          remove-docker-images: 'true'   # Frees ~3.2 GB
-          remove-large-packages: 'true'  # Frees ~3.1 GB
-          remove-swapfile: 'true'        # Frees ~4 GB
-          remove-cached-tools: 'false'   # Avoid unless confirmed safe
-          verbose: 'true'                # Enable detailed logging
+      - name: Clean up build environment
+        run: |
+          # pick from https://github.com/cctv18/oppo_oplus_realme_sm8750/blob/test/.github/workflows/fastbuild_6.6.66.yml
+          sudo apt-mark hold firefox
+          sudo apt-mark hold libc-bin
+          sudo apt purge man-db
+          sudo rm -rf /var/lib/man-db/auto-update
+          # pick from https://github.com/easimon/maximize-build-space/blob/master/action.yml
+          sudo docker image prune --all --force
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -89,6 +89,12 @@ jobs:
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
           mkdir -p "$CONFIG"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: gki-kernel-${{ env.CONFIG }}
+          max-size: 3G
 
       - name: Get Baseband-guard Source
         uses: actions/checkout@v4
@@ -154,7 +160,14 @@ jobs:
           cd "$CONFIG"
           echo "Building the kernel..."
           if [ -f "build/build.sh" ]; then
-            LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh || exit 1
+            LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
           else
-            tools/bazel build --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+            tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
           fi
+
+      - name: upload Ccache debug log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccache-debug-log
+          path: ${{ github.workspace }}/kernel_workspace/ccache.log
