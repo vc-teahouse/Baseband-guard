@@ -2,9 +2,15 @@ obj-$(CONFIG_BBG) += baseband_guard.o
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 
-$(shell cd $(srctree)/$(src); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin [ -f ../.git/shallow ] && git fetch --unshallow)
+ifeq ($(findstring $(srctree),$(src)),$(srctree))
+  BBG_DIR := $(src)
+else
+  BBG_DIR := $(srctree)/$(src)
+endif
 
-COMMIT_SHA := $(shell cd $(srctree)/$(src) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
+$(shell cd $(BBG_DIR); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin [ -f ../.git/shallow ] && git fetch --unshallow)
+
+COMMIT_SHA := $(shell cd $(BBG_DIR) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
 
 ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
