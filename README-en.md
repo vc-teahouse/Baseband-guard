@@ -64,8 +64,8 @@ Baseband-guard, as an **LSM module**, installs hooks in the kernel’s file writ
    ```text
    CONFIG_BBG=y
    ```
-   **TIPS**
-   - if you are using local compile, please follow setup.sh output to manually modify your defconfig
+   **TIPS OF CONFIG_LSM**
+   - if you are using local compile, please follow setup.sh output to manually modify your defconfig(Note: make sure the `gawk` was installed into your system)
    - if you are using Github Action to compile your kernel, you can add this command to your compile workflow
      ```bash
      sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' security/Kconfig

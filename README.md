@@ -63,8 +63,8 @@ Baseband-guard 作为 **LSM** 模块在关键文件写入路径安装钩子（�
    ```text
    CONFIG_BBG=y
    ```
-   **特别说明**
-   - 如果你正在使用本地编译，请参阅setup.sh执行后的输出手动修改您的defconfig
+   **CONFIG_LSM 特别说明**
+   - 如果你正在使用本地编译，请参阅setup.sh执行后的输出手动修改您的defconfig(Note: 请确保`gawk`已安装至你的系统环境)
    - 如果你正在使用Github Action云编译，可在构建脚本中添加
      ```bash
      sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' security/Kconfig
