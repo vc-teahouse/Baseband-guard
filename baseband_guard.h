@@ -31,10 +31,10 @@ static const char * const allowed_domain_substrings[] = {
 	"system_server",
 	"minidumpreader",
 	"bspFwUpdate",
-	"u:r:vold:s0",
+	"vold",
 	"kernel",
 	"tee",
-	"u:r:ueventd:s0",
+	"ueventd",
 	"gsid",
 	"snapuserd",
 };
