@@ -54,7 +54,7 @@ static const char * const allowed_domain_substrings[] = {
 	"bspFwUpdate",
 	"u:r:vold:s0",
  	"kernel",
-	"tee"
+	"tee",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
@@ -64,6 +64,10 @@ static const char * const allowlist_names[] = {
 #endif
 	"dtbo", "vendor_boot",
 	"userdata", "cache", "metadata", "misc",
+        "vbmeta", "vbmeta_system", "vbmeta_vendor",
+#ifndef BBG_BLOCK_RECOVERY
+        "recovery"
+#endif
 };
 static const size_t allowlist_cnt = ARRAY_SIZE(allowlist_names);
 

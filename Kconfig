@@ -35,6 +35,20 @@ config BBG_BLOCK_BOOT
           fastboot mode).
           If unsure, leave this n.
 
+config BBG_BLOCK_RECOVERY
+       bool "Enable Baseband Protection for Recovery Partition"
+       depends on BBG
+       default n
+       help
+          Enable protection for recovery partition to
+          prevent malicious scripts or programs
+          destroying, however this may cause failure
+          when flashing custom recs in Android system
+          (meaning that you'll only be able to flash
+          recovery partition image in fastbootd/
+          bootloader mode).
+          If unsure, leave this n.
+
 config BBG_DOMAIN_PROTECTION
        bool "Interception for malicious Selinux domain switching"
        depends on BBG
