@@ -131,7 +131,7 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern int current_process_trusted(void);
 #endif
 
@@ -330,7 +330,7 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 }
 #endif
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern int bb_bprm_set_creds(struct linux_binprm *bprm);
 extern void bb_cred_transfer(struct cred *new, const struct cred *old);
 extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
@@ -341,7 +341,7 @@ static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
 	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
 	LSM_HOOK_INIT(bprm_creds_for_exec,  bb_bprm_set_creds),
 #else
@@ -365,7 +365,7 @@ static int __init bbg_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern struct lsm_blob_sizes bbg_blob_sizes;
 #endif
 
@@ -375,7 +375,7 @@ security_initcall(bbg_init);
 DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 	.blobs = &bbg_blob_sizes
 #endif
 };
