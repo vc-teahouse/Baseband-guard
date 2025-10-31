@@ -3,7 +3,7 @@
 #include "objsec.h"
 #include "security.h"
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
+#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 #ifdef BBG_USE_DEFINE_LSM
 extern struct lsm_blob_sizes bbg_blob_sizes;
 #endif

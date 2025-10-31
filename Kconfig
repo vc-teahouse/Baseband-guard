@@ -58,16 +58,6 @@ config BBG_DOMAIN_PROTECTION
           without intercepting selinux state modifications.
           If unsure, leave this y.
 
-config BBG_DOMAIN_PROTECTION_TRACE_ALL_SU
-       bool "Trace all su process to block them bypass domain protection"
-       depends on BBG_DOMAIN_PROTECTION
-       default y
-       help
-          Trace the su process and all its related processes 
-          to prevent them from bypassing domain protections, 
-          but this may result in more memory usage
-          If unsure, leave this y.
-
 config BBG_DISABLE_SELINUX_PERMISSIVE
        bool "Disable system switch selinux state to permissive"
        depends on BBG
