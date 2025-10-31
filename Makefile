@@ -8,7 +8,7 @@ else
   BBG_DIR := $(srctree)/$(src)
 endif
 
-$(shell cd $(BBG_DIR); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin [ -f ../.git/shallow ] && git fetch --unshallow)
+$(shell cd $(BBG_DIR) && test -f .git/shallow && $(GIT_BIN) fetch --unshallow)
 
 COMMIT_SHA := $(shell cd $(BBG_DIR) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
 
@@ -16,7 +16,7 @@ ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
 endif
 
-HAS_DEFINE_LSM := $(shell grep -q "#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
+HAS_DEFINE_LSM := $(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
 
 ifeq ($(CONFIG_BBG),y)
   $(info -- Baseband-guard: CONFIG_BBG enabled, now checking...)
