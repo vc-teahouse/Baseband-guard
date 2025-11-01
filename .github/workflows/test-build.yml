@@ -164,10 +164,3 @@ jobs:
           else
             tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
           fi
-
-      - name: upload Ccache debug log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ccache-debug-log
-          path: ${{ github.workspace }}/kernel_workspace/ccache.log
