@@ -13,8 +13,8 @@ $(shell cd $(BBG_DIR) && test -f .git/shallow && $(GIT_BIN) fetch --unshallow)
 REPO_LINK := $(shell cd $(BBG_DIR) && $(GIT_BIN) remote get-url origin 2>/dev/null)
 COMMIT_SHA := $(shell cd $(BBG_DIR) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
 
-ifeq ($(strip $(COMMIT_SHA)),)
-  COMMIT_SHA := unknown
+ifeq ($(strip $(REPO_LINK)),)
+  REPO_LINK := unknown
 endif
 ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
