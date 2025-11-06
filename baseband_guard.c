@@ -55,6 +55,7 @@ static const char * const allowed_domain_substrings[] = {
 	"u:r:vold:s0",
  	"kernel",
 	"tee",
+	"gsid",
 };
 static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
 
