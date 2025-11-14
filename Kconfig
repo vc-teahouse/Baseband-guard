@@ -39,14 +39,4 @@ config BBG_BLOCK_RECOVERY
           bootloader mode).
           If unsure, leave this n.
 
-config BBG_DISABLE_SELINUX_PERMISSIVE
-       bool "Disable system switch selinux state to permissive"
-       depends on BBG
-       default n
-       help
-          Deny all userspace processes disable SELinux.
-          BBG doesn't need this right now.
-          But we recommand DON'T turn selinux off, so we keep it here.
-          If unsure, leave this n. 
-
 endmenu

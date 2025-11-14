@@ -56,11 +56,7 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 
 int __maybe_unused bbg_process_setpermissive(void)
 {
-#ifdef CONFIG_BBG_DISABLE_SELINUX_PERMISSIVE
-	return 1;
-#else
 	return 0;
-#endif
 }
 
 int current_process_trusted(void) {
