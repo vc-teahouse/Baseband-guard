@@ -11,16 +11,6 @@ config BBG
           function partitions.
           If unsure, leave this y.
 
-config BBG_ALLOW_IN_RECOVERY
-       bool "Turn off Baseband Protection in Recovery Mode"
-       depends on BBG
-       default y
-       help
-          Turn off protection in recovery mode, in
-          order that repairing system partitions can
-          be done in recovery mode.
-          If unsure, leave this y.
-
 config BBG_BLOCK_BOOT
        bool "Enable Baseband Protection for Boot Partition"
        depends on BBG
@@ -48,15 +38,6 @@ config BBG_BLOCK_RECOVERY
           recovery partition image in fastbootd/
           bootloader mode).
           If unsure, leave this n.
-
-config BBG_DOMAIN_PROTECTION
-       bool "Interception for malicious Selinux domain switching"
-       depends on BBG
-       default y
-       help
-          Prevents malicious processes from switching selinux domain names
-          without intercepting selinux state modifications.
-          If unsure, leave this y.
 
 config BBG_DISABLE_SELINUX_PERMISSIVE
        bool "Disable system switch selinux state to permissive"
