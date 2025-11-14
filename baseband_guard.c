@@ -131,38 +131,7 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern int current_process_trusted(void);
-#endif
-
-static bool current_domain_allowed(void)
-{
-#ifdef CONFIG_SECURITY_SELINUX
-	u32 sid = 0;
-	char *ctx = NULL;
-	u32 len = 0;
-	bool ok = false;
-	size_t i;
-
-	security_cred_getsecid_compat(current_cred(), &sid);
-
-	if (!sid) return false;
-	if (security_secid_to_secctx(sid, &ctx, &len)) return false;
-	if (!ctx || !len) goto out;
-
-	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
-		const char *needle = allowed_domain_substrings[i];
-		if (needle && *needle) {
-			if (strnstr(ctx, needle, len)) { ok = true; break; }
-		}
-	}
-out:
-	security_release_secctx(ctx, len);
-	return ok;
-#else
-	return false;
-#endif
-}
 
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
 {
@@ -245,7 +214,7 @@ static int bb_file_permission(struct file *file, int mask)
 	inode = file_inode(file);
 	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (likely(current_domain_allowed() && current_process_trusted()))
+	if (likely(current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -267,7 +236,7 @@ static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr)
 
 	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (likely(current_domain_allowed() && current_process_trusted()))
+	if (likely(current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -314,7 +283,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (!is_destructive_ioctl(cmd))
 		return 0;
 
-	if (likely(current_domain_allowed() && current_process_trusted()))
+	if (likely(current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
@@ -330,18 +299,15 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 }
 #endif
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern int bb_bprm_set_creds(struct linux_binprm *bprm);
 extern void bb_cred_transfer(struct cred *new, const struct cred *old);
 extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
-#endif
 
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
 	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
 	LSM_HOOK_INIT(bprm_creds_for_exec,  bb_bprm_set_creds),
 #else
@@ -349,7 +315,6 @@ static struct security_hook_list bb_hooks[] = {
 #endif
 	LSM_HOOK_INIT(cred_transfer, 		bb_cred_transfer),
 	LSM_HOOK_INIT(cred_prepare, 	    bb_cred_prepare),
-#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
 	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
@@ -365,9 +330,7 @@ static int __init bbg_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 extern struct lsm_blob_sizes bbg_blob_sizes;
-#endif
 
 #ifndef BBG_USE_DEFINE_LSM
 security_initcall(bbg_init);
@@ -375,9 +338,7 @@ security_initcall(bbg_init);
 DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 	.blobs = &bbg_blob_sizes
-#endif
 };
 #endif
 

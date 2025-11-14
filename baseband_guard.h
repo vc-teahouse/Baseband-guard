@@ -11,36 +11,6 @@
 
 #define BB_BYNAME_DIR "/dev/block/by-name"
 
-static const char * const allowed_domain_substrings[] = {
-	"update_engine",
-	"platform_app",
-	"fastbootd",
-#ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
-	"recovery",
-#endif
-	"rmt_storage",
-	"oplus",
-	"oppo",
-	"feature",
-	"swap",
-	"system_perf_init",
-	"hal_bootctl_default",
-	"fsck",
-	"vendor",
-	"mi_ric",
-	"system_server",
-	"minidumpreader",
-	"bspFwUpdate",
-	"vold",
-	"kernel",
-	"tee",
-	"ueventd",
-	"gsid",
-	"snapuserd",
-};
-
-static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
-
 static const char * const allowlist_names[] = {
 #ifndef CONFIG_BBG_BLOCK_BOOT
 	"boot", "init_boot",

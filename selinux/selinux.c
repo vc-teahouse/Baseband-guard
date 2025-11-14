@@ -2,7 +2,6 @@
 #include "../baseband_guard.h"
 #include "../kernel_compat.h"
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
 struct lsm_blob_sizes bbg_blob_sizes __ro_after_init = {
 	.lbs_cred = sizeof(struct bbg_task_struct),
@@ -54,10 +53,8 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 
 	return 0;
 }
-#endif
 
-#ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int bbg_process_setpermissive(void)
+int __maybe_unused bbg_process_setpermissive(void)
 {
 #ifdef CONFIG_BBG_DISABLE_SELINUX_PERMISSIVE
 	return 1;
@@ -65,15 +62,12 @@ int bbg_process_setpermissive(void)
 	return 0;
 #endif
 }
-#endif
 
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
 int current_process_trusted(void) {
 	struct bbg_task_struct *bbg_tsec;
 	bbg_tsec = bbg_cred(current_cred());
 	return !bbg_tsec->is_untrusted_process;
 }
-#endif
 
 int __maybe_unused bbg_test_domain_transition(u32 target_secid)
 {
