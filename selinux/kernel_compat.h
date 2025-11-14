@@ -18,7 +18,7 @@ static inline struct bbg_task_struct* bbg_cred(const struct cred *cred) {
 #endif
 }
 
-static inline bool selinux_initialized_compat()
+static inline bool selinux_initialized_compat(void)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,4,0)
     return selinux_initialized();
