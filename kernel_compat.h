@@ -34,8 +34,6 @@ static inline int lookup_bdev_compat(char *path, dev_t *out) {
 }
 #endif
 
-static inline is_named_device(const char )
-
 // https://github.com/torvalds/linux/commit/22ae8ce8b89241c94ac00c237752c0ffa37ba5ae
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0) 
 
