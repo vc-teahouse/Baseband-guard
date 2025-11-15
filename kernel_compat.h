@@ -52,8 +52,6 @@ static bool bbg_is_named_device(dev_t dev, const char *name_prefix)
 
         if (strncmp(disk_name, name_prefix, prefix_len) == 0) {
             match = true;
-            bb_pr("device %u:%u (%s) matches prefix \"%s\"\n",
-                  MAJOR(dev), MINOR(dev), disk_name, name_prefix);
         }
     }
 
