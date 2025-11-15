@@ -42,7 +42,7 @@ static bool bbg_is_named_device(dev_t dev, const char *name_prefix)
     struct block_device *bdev;
     bool match = false;
 
-    bdev = blkdev_get_by_dev(dev, FMODE_READ);
+    bdev = blkdev_get_by_dev(dev, FMODE_READ, THIS_MODULE);
     if (IS_ERR(bdev))
         return false;
 
@@ -55,7 +55,7 @@ static bool bbg_is_named_device(dev_t dev, const char *name_prefix)
         }
     }
 
-    blkdev_put(bdev, FMODE_READ, THIS_MODULE);
+    blkdev_put(bdev, FMODE_READ);
     return match;
 }
 #else
