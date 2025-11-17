@@ -113,7 +113,7 @@ static __maybe_unused inline void security_cred_getsecid_compat(const struct cre
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
-const struct lsm_id bbg_lsmid = {
+struct lsm_id bbg_lsmid = {
 	.name = "baseband_guard",
 	.id = 995,
 };
@@ -127,5 +127,6 @@ static __maybe_unused inline void __init security_add_hooks_compat(struct securi
 #else
 	security_add_hooks(hooks, count);
 #endif
+
 
 }
