@@ -10,7 +10,7 @@ struct bbg_task_struct {
 	int is_untrusted_process;		/* execve from su */
 };
 
-static inline struct bbg_task_struct* bbg_cred(const struct cred *cred) {
+static __maybe_unused inline struct bbg_task_struct* bbg_cred(const struct cred *cred) {
 #ifdef BBG_USE_DEFINE_LSM
 	return cred->security + bbg_blob_sizes.lbs_cred;
 #else
@@ -18,7 +18,7 @@ static inline struct bbg_task_struct* bbg_cred(const struct cred *cred) {
 #endif
 }
 
-static inline bool selinux_initialized_compat(void)
+static __maybe_unused inline bool selinux_initialized_compat(void)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,4,0)
     return selinux_initialized();
