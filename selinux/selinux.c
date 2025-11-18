@@ -1,6 +1,4 @@
 #include "kernel_compat.h"
-#include "../baseband_guard.h"
-#include "../kernel_compat.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
 struct lsm_blob_sizes bbg_blob_sizes __ro_after_init = {
