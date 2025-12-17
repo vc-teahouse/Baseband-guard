@@ -325,8 +325,8 @@ static int __init bbg_init(void)
 {
 	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks));
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
-	pr_info("baseband_guard repo: %s", __stringify(BBG_REPO));
-	pr_info("baseband_guard version: %s", __stringify(BBG_VERSION));
+	pr_info("baseband_guard repo: %s", BBG_REPO);
+	pr_info("baseband_guard version: %s", BBG_VERSION);
 	return 0;
 }
 
