@@ -25,6 +25,7 @@ initialize_variables() {
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
     BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
+    SELINUX_OBJSEC="$SECURITY_DIR/selinux/include/objsec.h"
     PATCH_FILE="$BBG_DIR/sepatch.txt"
 }
 
@@ -40,6 +41,9 @@ perform_cleanup() {
     fi
     if [ -f "${SELINUX_MAKEFILE}.bak" ]; then
         rm -f $SELINUX_MAKEFILE && mv "${SELINUX_MAKEFILE}.bak" "$SELINUX_MAKEFILE"; echo " - Selinux Makefile reverted"
+    fi
+    if [ -f "${SELINUX_OBJSEC}.bak" ]; then
+        rm -f $SELINUX_OBJSEC && mv "${SELINUX_OBJSEC}.bak" "$SELINUX_OBJSEC"; echo " - Selinux objsec.h reverted"
     fi
     [ -d "$BBG_DIR" ] && rm -rf "$BBG_DIR" && echo " - Baseband-guard dir deleted"
 }
@@ -106,9 +110,14 @@ setup_baseband_guard() {
         echo " - Kconfig updated"
     fi
     
-    # Selinux Makefile patch
+    # Selinux patch
     if [ ! -f "$SELINUX_MAKEFILE" ]; then
         echo "Error: '$SELINUX_MAKEFILE' not found!"
+        exit 1
+    fi
+    
+    if [ ! -f "$SELINUX_OBJSEC" ]; then
+        echo "Error: '$SELINUX_OBJSEC' not found!"
         exit 1
     fi
 
@@ -118,10 +127,13 @@ setup_baseband_guard() {
     fi
 
     cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
+    cp $SELINUX_OBJSEC ${SELINUX_OBJSEC}.bak
     sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
     sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
     cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-    echo "Selinux Makefile patching done!"
+    sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "../../baseband_guard/selinux/kernel_compat.h"\n#endif' "$SELINUX_OBJSEC"
+    sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_task_struct  bbg_cred; /* bbg creds */\n#endif' "$SELINUX_OBJSEC"
+    echo "Selinux patching done!"
 
     echo "[+] Done."
 }
