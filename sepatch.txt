@@ -146,6 +146,14 @@ $(obj)/hooks.o: $(obj)/.bbg_hooks_patched
 selinux-y += selinuxfs.o
 selinux-y += hooks.o
 
+ifeq ($(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true),true)
+ccflags-y += -DBBG_USE_DEFINE_LSM
+endif
+
+ifeq ($(shell grep -q "file_ioctl_compat" $(srctree)/include/linux/lsm_hook_defs.h $(srctree)/include/linux/lsm_hooks.h 2>/dev/null && echo true),true)
+ccflags-y += -DBBG_HAS_IOCTL_COMPAT
+endif
+
 else
 selinux-y += selinuxfs.o
 selinux-y += hooks.o
