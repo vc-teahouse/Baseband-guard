@@ -75,16 +75,14 @@ setup_baseband_guard() {
     fi
 
     # Symlink security/baseband-guard -> ../Baseband-guard
-    (
-      cd "$SECURITY_DIR"
-      # prefer relative path; fall back to absolute if realpath --relative-to not available
-      if command -v realpath >/dev/null 2>&1; then
-          rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
-      else
-          rel="$BBG_DIR"
-      fi
-      ln -sfn "$rel" "$BBG_SYMLINK"
-    )
+    cd "$SECURITY_DIR"
+    # prefer relative path; fall back to absolute if realpath --relative-to not available
+    if command -v realpath >/dev/null 2>&1; then
+        rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
+    else
+        rel="$BBG_DIR"
+    fi
+    ln -sfn "$rel" "$BBG_SYMLINK"
     echo " - symlink created"
 
     # Makefile entry (idempotent)
@@ -140,8 +138,9 @@ setup_baseband_guard() {
         cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
         cp $SELINUX_OBJSEC ${SELINUX_OBJSEC}.bak
         cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-        sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "../../baseband_guard/tracing/tracing.h"\n#endif' "$SELINUX_OBJSEC"
+        sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' "$SELINUX_OBJSEC"
         sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' "$SELINUX_OBJSEC"
+        ln -sfn "$rel/tracing/tracing.h" "$SECURITY_DIR/selinux/include/bbg_tracing.h" # symlink tracing.h
         echo "Selinux patching done!"
     else
         echo "Modern LSM infrastructure detected (GKI/Modern Kernel). Skipping Selinux patch."
