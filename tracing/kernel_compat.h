@@ -2,21 +2,7 @@
 #include <linux/cred.h>
 #include "objsec.h"
 #include "security.h"
-
-#ifdef BBG_USE_DEFINE_LSM
-extern struct lsm_blob_sizes bbg_blob_sizes;
-#endif
-struct bbg_task_struct {
-	int is_untrusted_process;		/* execve from su */
-};
-
-static __maybe_unused inline struct bbg_task_struct* bbg_cred(const struct cred *cred) {
-#ifdef BBG_USE_DEFINE_LSM
-	return cred->security + bbg_blob_sizes.lbs_cred;
-#else
-	return ((task_security_struct) cred->security).bbg_cred;
-#endif
-}
+#include "tracing.h"
 
 static __maybe_unused inline bool selinux_initialized_compat(void)
 {

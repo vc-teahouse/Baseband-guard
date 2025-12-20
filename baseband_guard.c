@@ -12,8 +12,10 @@
 #include <linux/cred.h>
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
+
 #include "kernel_compat.h"
 #include "baseband_guard.h"
+#include "tracing/tracing.h"
 
 extern char *saved_command_line; 
 static const char *slot_suffix_from_cmdline(void)
@@ -131,8 +133,6 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 	return false;
 }
 
-extern int current_process_trusted(void);
-
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
 {
 	char *p;
@@ -156,9 +156,6 @@ static int bbg_get_cmdline(char *buf, int buflen)
 
 static void bbg_log_deny_detail(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
-	u32 sid = 0;
-	char *ctx = NULL;
-	u32 len = 0;
 	const int PATH_BUFLEN = 256;
 	const int CMD_BUFLEN  = 256;
 
@@ -171,24 +168,17 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 	if (cmdbuf)
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
-	security_cred_getsecid_compat(current_cred(), &sid);
-
-	if (!sid || security_secid_to_secctx(sid, &ctx, &len) || !ctx || !len) {
-		ctx = "unknown";
-		len = strlen("unknown");
-	}
-
 	if (cmd_opt) {
 		pr_info(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
+			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, len, ctx, current->comm,
+			path ? path : "?", current->pid, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	} else {
 		pr_info(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
+			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, len, ctx, current->comm,
+			path ? path : "?", current->pid, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	}
 
@@ -223,26 +213,117 @@ static int bb_file_permission(struct file *file, int mask)
 	return deny("write to protected partition", file, inode, 0);
 }
 
+static inline int is_protected_blkdev(struct dentry *dentry)
+{
+    struct inode *inode;
+
+    if (!dentry)
+        return 0;
+
+    inode = d_backing_inode(dentry); // fix just rename blkdev to zramxxx bypass
+    if (!inode)
+        return 0;
+
+    if (unlikely(S_ISBLK(inode->i_mode))) {
+        if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+            return 0;
+
+        return 1;
+    }
+
+	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
+    if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
+		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, NULL);
+		int result = 0;
+		struct path target_path;
+
+		if (IS_ERR_OR_NULL(symlink_target_link))
+        	return 0;
+		if (symlink_target_link[0] != '/') 
+			return 0;// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
+		
+		if (kern_path(symlink_target_link, LOOKUP_FOLLOW, &target_path) == 0) {
+        	struct inode *target_inode = d_backing_inode(target_path.dentry);
+        	if (target_inode && S_ISBLK(target_inode->i_mode)) {
+            	result = 1;
+        	}
+        	path_put(&target_path);
+    	}
+		return result;
+    }
+
+    return 0;
+}
+
+static dev_t byname_dev = 0;
+static unsigned long byname_ino = 0;
+
+static int is_bb_byname_dir(struct inode *dir)
+{
+	if (unlikely(byname_ino == 0)) {
+        struct path path;
+        if (kern_path(BB_BYNAME_DIR, LOOKUP_FOLLOW, &path) == 0) {
+            struct inode *inode = d_backing_inode(path.dentry);
+            if (inode) {
+                byname_dev = inode->i_sb->s_dev;
+                byname_ino = inode->i_ino;
+            }
+            path_put(&path);
+        } else {
+            return 0;
+        }
+    }
+
+    if (dir->i_ino == byname_ino && dir->i_sb->s_dev == byname_dev)
+        return 1;
+
+    return 0;
+}
+
+static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char *name)
+{
+	struct path target_path;
+
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if (unlikely(is_bb_byname_dir(dir))) {
+		return deny("create symlink on BB_BYNAME_DIR", 0, dir, 0);
+	} // i don't want check allowlist in there, because root process WHY create symlink in /dev/block/by-name?
+
+	return 0;	
+}
+
+static int bb_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
+                           struct inode *new_dir, struct dentry *new_dentry)
+{
+    struct inode *inode;
+
+    if (!old_dentry)
+        return 0;
+
+    if (unlikely(is_protected_blkdev(old_dentry)))
+        return deny("rename on protected block device", 0, d_inode(old_dentry), 0);
+
+    if (unlikely(new_dentry && is_protected_blkdev(new_dentry)))
+        return deny("rename on protected target block device's symlink", 0, d_inode(new_dentry), 0);
+
+    return 0;
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
 static int bb_inode_setattr(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *iattr)
 #else
 static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr) 
 #endif
 {
-	struct inode *inode;
-    if (!dentry || !iattr) return 0;
-    inode = d_inode(dentry);
-	if (!inode) return 0;
+	if (current_process_trusted())
+        return 0;
 
-	if (likely(!S_ISBLK(inode->i_mode))) return 0;
+	if (is_protected_blkdev(dentry))
+		return deny("setattr on protected partition", 0, d_inode(dentry), 0);
 
-	if (likely(current_process_trusted()))
-		return 0;
-
-	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
-		return 0;
-
-	return deny("setattr on protected partition", 0, inode, 0);
+	return 0;	
 }
 
 static inline bool is_destructive_ioctl(unsigned int cmd)
@@ -292,7 +373,7 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return deny("destructive ioctl on protected partition", file, inode, cmd);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+#ifdef BB_HAS_IOCTL_COMPAT
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return bb_file_ioctl(file, cmd, arg);
@@ -316,17 +397,19 @@ static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(cred_transfer, 		bb_cred_transfer),
 	LSM_HOOK_INIT(cred_prepare, 	    bb_cred_prepare),
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+#ifdef BB_HAS_IOCTL_COMPAT
 	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
 #endif
+	LSM_HOOK_INIT(inode_rename,			bb_inode_rename),
+	LSM_HOOK_INIT(inode_symlink,		bb_inode_symlink),
 };
 
 static int __init bbg_init(void)
 {
-	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks));
+	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks)); // init lsm hooks and print version notice
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
-	pr_info("baseband_guard repo: %s", BBG_REPO);
-	pr_info("baseband_guard version: %s", BBG_VERSION);
+	pr_info("baseband_guard repo: %s", __stringify(BBG_REPO));
+	pr_info("baseband_guard version: %s", __stringify(BBG_VERSION));
 	return 0;
 }
 

@@ -26,6 +26,10 @@ ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
 endif
 
+ifeq ($(shell grep -q "file_ioctl_compat" $(srctree)/include/linux/lsm_hook_defs.h $(srctree)/include/linux/lsm_hooks.h 2>/dev/null && echo true),true)
+    ccflags-y += -DBB_HAS_IOCTL_COMPAT
+endif
+
 HAS_DEFINE_LSM := $(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
 
 ifeq ($(CONFIG_BBG),y)

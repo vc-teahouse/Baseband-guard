@@ -27,6 +27,7 @@ initialize_variables() {
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
     SELINUX_OBJSEC="$SECURITY_DIR/selinux/include/objsec.h"
     PATCH_FILE="$BBG_DIR/sepatch.txt"
+    LSM_HOOKS_H="$GKI_ROOT/include/linux/lsm_hooks.h"
 }
 
 # Revert changes
@@ -110,30 +111,42 @@ setup_baseband_guard() {
         echo " - Kconfig updated"
     fi
     
-    # Selinux patch
-    if [ ! -f "$SELINUX_MAKEFILE" ]; then
-        echo "Error: '$SELINUX_MAKEFILE' not found!"
+    # nongki compatible
+
+    if [ ! -f "$LSM_HOOKS_H" ]; then
+        echo "Error: Cannot find lsm_hooks.h at $LSM_HOOKS_H"
         exit 1
     fi
+
+    if ! grep -q "#define DEFINE_LSM(lsm)" "$LSM_HOOKS_H"; then
+        echo "Modern LSM infrastructure not detected (pre-5.1 kernel style)."
+        echo "Applying Selinux patch for BBG..."
+
+        if [ ! -f "$SELINUX_MAKEFILE" ]; then
+            echo "Error: '$SELINUX_MAKEFILE' not found!"
+            exit 1
+        fi
     
-    if [ ! -f "$SELINUX_OBJSEC" ]; then
-        echo "Error: '$SELINUX_OBJSEC' not found!"
-        exit 1
-    fi
+        if [ ! -f "$SELINUX_OBJSEC" ]; then
+            echo "Error: '$SELINUX_OBJSEC' not found!"
+            exit 1
+        fi
 
-    if [ ! -f "$PATCH_FILE" ]; then
-        echo "Error: patching code '$PATCH_FILE' not found! "
-        exit 1
-    fi
+        if [ ! -f "$PATCH_FILE" ]; then
+            echo "Error: patching code '$PATCH_FILE' not found! "
+            exit 1
+        fi
 
-    cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
-    cp $SELINUX_OBJSEC ${SELINUX_OBJSEC}.bak
-    sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
-    sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
-    cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-    sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "../../baseband_guard/selinux/kernel_compat.h"\n#endif' "$SELINUX_OBJSEC"
-    sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_task_struct  bbg_cred; /* bbg creds */\n#endif' "$SELINUX_OBJSEC"
-    echo "Selinux patching done!"
+        cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
+        cp $SELINUX_OBJSEC ${SELINUX_OBJSEC}.bak
+        cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
+        sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "../../baseband_guard/tracing/tracing.h"\n#endif' "$SELINUX_OBJSEC"
+        sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' "$SELINUX_OBJSEC"
+        echo "Selinux patching done!"
+    else
+        echo "Modern LSM infrastructure detected (GKI/Modern Kernel). Skipping Selinux patch."
+        echo "BBG will use standard LSM blob management."
+    fi
 
     echo "[+] Done."
 }
