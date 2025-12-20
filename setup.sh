@@ -140,7 +140,7 @@ setup_baseband_guard() {
         cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
         sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' "$SELINUX_OBJSEC"
         sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' "$SELINUX_OBJSEC"
-        ln -sfn "$rel/tracing/tracing.h" "$SECURITY_DIR/selinux/include/bbg_tracing.h" # symlink tracing.h
+        ln -sfn "$rel/../../tracing/tracing.h" "$SECURITY_DIR/selinux/include/bbg_tracing.h" # symlink tracing.h
         echo "Selinux patching done!"
     else
         echo "Modern LSM infrastructure detected (GKI/Modern Kernel). Skipping Selinux patch."
