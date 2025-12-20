@@ -110,11 +110,10 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 
 static bool is_zram_device(dev_t dev)
 {
-	struct block_device *bdev;
 	bool is_zram = bbg_is_named_device(dev, "zram");
 	if (is_zram) {
-		bb_pr("zram dev %u:%u (%s) identified, whitelisting\n",
-				MAJOR(dev), MINOR(dev), bdev->bd_disk->disk_name);
+		bb_pr("zram dev %u:%u identified, whitelisting\n",
+				MAJOR(dev), MINOR(dev));
 	}
 	return is_zram;
 }

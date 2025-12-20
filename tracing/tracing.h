@@ -6,16 +6,18 @@ struct bbg_cred_security_struct {
 
 #ifdef BBG_USE_DEFINE_LSM
 extern struct lsm_blob_sizes bbg_blob_sizes;
-#endif
 
 static __maybe_unused inline struct bbg_cred_security_struct* bbg_cred(const struct cred *cred) {
-#ifdef BBG_USE_DEFINE_LSM
 	return cred->security + bbg_blob_sizes.lbs_cred;
-#else
-	return ((task_security_struct) cred->security).bbg_cred;
-#endif
 }
 
+#else
+struct bbg_cred_security_struct* bbg_cred(const struct cred *cred);
+
+static inline struct task_security_struct *selinux_cred(const struct cred *cred)
+{
+	return cred->security;
+}
 #endif
 
 static __maybe_unused inline int current_process_trusted(void) {
@@ -23,3 +25,5 @@ static __maybe_unused inline int current_process_trusted(void) {
 	bbg_tsec = bbg_cred(current_cred());
 	return !bbg_tsec->is_untrusted_process;
 }
+
+#endif

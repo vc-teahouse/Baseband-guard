@@ -1,4 +1,5 @@
 #include "kernel_compat.h"
+#include <linux/security.h>
 #include <linux/errno.h>
 #include <linux/cred.h>
 
@@ -88,3 +89,9 @@ int __maybe_unused bbg_test_domain_transition(u32 target_secid)
 {
 	return 0;
 }
+
+#ifndef BBG_USE_DEFINE_LSM
+struct bbg_cred_security_struct* bbg_cred(const struct cred *cred) {
+	return &((struct task_security_struct *)cred->security)->bbg_cred;
+}
+#endif
