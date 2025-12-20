@@ -1,10 +1,10 @@
-basebandguard-objs += baseband_guard.o
-basebandguard-objs += selinux/selinux.o
+bbg-objs += baseband_guard.o
+bbg-objs += tracing/tracing.o
 
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
 ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
 
-obj-$(CONFIG_BBG) += basebandguard.o
+obj-$(CONFIG_BBG) += bbg.o
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 

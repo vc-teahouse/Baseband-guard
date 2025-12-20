@@ -282,8 +282,6 @@ static int is_bb_byname_dir(struct inode *dir)
 
 static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char *name)
 {
-	struct path target_path;
-
 	if (likely(current_process_trusted()))
 		return 0;
 
@@ -297,8 +295,6 @@ static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char
 static int bb_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
                            struct inode *new_dir, struct dentry *new_dentry)
 {
-    struct inode *inode;
-
     if (!old_dentry)
         return 0;
 
