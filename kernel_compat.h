@@ -90,28 +90,6 @@ static __maybe_unused bool bbg_is_named_device(dev_t dev, const char *name_prefi
 
 #endif
 
-#ifdef CONFIG_SECURITY_SELINUX
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0)
-static __maybe_unused inline void security_cred_getsecid_compat(const struct cred *c, u32 *secid) {
-    const struct task_security_struct *tsec;
-
-    if (!c || !secid) {
-        return;
-    }
-
-	tsec = c->security;
-	*secid = tsec->sid;
-}
-#else
-static __maybe_unused inline void security_cred_getsecid_compat(const struct cred *c, u32 *secid) {
-    security_cred_getsecid(c, secid);
-}
-#endif
-
-
-#endif
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
 const struct lsm_id bbg_lsmid = {
 	.name = "baseband_guard",
