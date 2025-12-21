@@ -145,7 +145,7 @@ jobs:
           sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
           cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
           echo "Selinux Makefile patching done!"
-          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' $SECURITY_KCONFIG
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' $SECURITY_KCONFIG
 
       - name: Apply Kernel Configuration
         run: |
