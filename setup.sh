@@ -19,6 +19,16 @@ initialize_variables() {
         echo '[ERROR] "security/" directory not found.'
         exit 127
     fi
+
+    if [ -d "$GKI_ROOT/include" ]; then
+        INCLUDE_DIR="$GKI_ROOT/include"
+    elif [ -d "$GKI_ROOT/common/security" ]; then
+        INCLUDE_DIR="$GKI_ROOT/common/include"
+    else
+        echo '[ERROR] "include/" directory not found.'
+        exit 127
+    fi
+    
     SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
     SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
     BBG_DIR="$GKI_ROOT/Baseband-guard"
@@ -27,7 +37,7 @@ initialize_variables() {
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
     SELINUX_OBJSEC="$SECURITY_DIR/selinux/include/objsec.h"
     PATCH_FILE="$BBG_DIR/sepatch.txt"
-    LSM_HOOKS_H="$GKI_ROOT/include/linux/lsm_hooks.h"
+    LSM_HOOKS_H="$INCLUDE_DIR/linux/lsm_hooks.h"
 }
 
 # Revert changes
