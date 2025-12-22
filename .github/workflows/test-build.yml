@@ -139,12 +139,6 @@ jobs:
           printf '\nobj-$(CONFIG_BBG) += baseband-guard/\n' >> "$SECURITY_MAKEFILE" && echo " - Makefile updated"
           # Kconfig source (insert before last endmenu; fallback append)
           grep -q "source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" || sed -i "/endmenu/i\source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" && echo " - Kconfig updated"
-          # apply sepatch.txt
-          cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
-          sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
-          sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
-          cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-          echo "Selinux Makefile patching done!"
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' $SECURITY_KCONFIG
 
       - name: Apply Kernel Configuration
