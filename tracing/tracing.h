@@ -13,11 +13,6 @@ static __maybe_unused inline struct bbg_cred_security_struct* bbg_cred(const str
 
 #else
 struct bbg_cred_security_struct* bbg_cred(const struct cred *cred);
-
-static inline struct task_security_struct *selinux_cred(const struct cred *cred)
-{
-	return cred->security;
-}
 #endif
 
 static __maybe_unused inline int current_process_trusted(void) {
