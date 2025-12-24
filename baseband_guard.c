@@ -12,66 +12,10 @@
 #include <linux/cred.h>
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
+
 #include "kernel_compat.h"
-
-#define BB_ENFORCING 1
-
-#if CONFIG_BBG_ANTI_SPOOF_DOMAIN == 1
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 1
-#elif CONFIG_BBG_ANTI_SPOOF_DOMAIN == 2
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 1
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
-#else
-#define BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE 0
-#define BB_ANTI_SPOOF_DISABLE_PERMISSIVE 0
-#endif
-
-#define bb_pr(fmt, ...)    pr_debug("baseband_guard: " fmt, ##__VA_ARGS__)
-#define bb_pr_rl(fmt, ...) pr_info_ratelimited("baseband_guard: " fmt, ##__VA_ARGS__)
-
-#define BB_BYNAME_DIR "/dev/block/by-name"
-
-static const char * const allowed_domain_substrings[] = {
-	"update_engine",
-	"platform_app",
-	"fastbootd",
-#ifdef CONFIG_BBG_ALLOW_IN_RECOVERY
-	"recovery",
-#endif
-	"rmt_storage",
-	"oplus",
-	"oppo",
-	"feature",
-	"swap",
-	"system_perf_init",
-	"hal_bootctl_default",
-	"fsck",
-	"vendor",
-	"mi_ric",
-	"system_server",
-	"minidumpreader",
-	"bspFwUpdate",
-	"u:r:vold:s0",
- 	"kernel",
-	"tee",
-	"gsid",
-	"snapuserd",
-};
-static const size_t allowed_domain_substrings_cnt = ARRAY_SIZE(allowed_domain_substrings);
-
-static const char * const allowlist_names[] = {
-#ifndef CONFIG_BBG_BLOCK_BOOT
-	"boot", "init_boot",
-#endif
-	"dtbo", "vendor_boot",
-	"userdata", "cache", "metadata", "misc",
-	"vbmeta", "vbmeta_system", "vbmeta_vendor",
-#ifndef BBG_BLOCK_RECOVERY
-	"recovery"
-#endif
-};
-static const size_t allowlist_cnt = ARRAY_SIZE(allowlist_names);
+#include "baseband_guard.h"
+#include "tracing/tracing.h"
 
 extern char *saved_command_line; 
 static const char *slot_suffix_from_cmdline(void)
@@ -166,11 +110,10 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 
 static bool is_zram_device(dev_t dev)
 {
-	struct block_device *bdev;
 	bool is_zram = bbg_is_named_device(dev, "zram");
 	if (is_zram) {
-		bb_pr("zram dev %u:%u (%s) identified, whitelisting\n",
-				MAJOR(dev), MINOR(dev), bdev->bd_disk->disk_name);
+		bb_pr("zram dev %u:%u identified, whitelisting\n",
+				MAJOR(dev), MINOR(dev));
 	}
 	return is_zram;
 }
@@ -187,43 +130,6 @@ static bool reverse_allow_match_and_cache(dev_t cur)
 		return true;
 	}
 	return false;
-}
-
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-static bool bbg_recently_permissive __read_mostly = false;
-#endif
-
-static bool current_domain_allowed(void)
-{
-#ifdef CONFIG_SECURITY_SELINUX
-	u32 sid = 0;
-	char *ctx = NULL;
-	u32 len = 0;
-	bool ok = false;
-	size_t i;
-
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-	if (unlikely(bbg_recently_permissive)) return false;
-#endif
-
-	security_cred_getsecid_compat(current_cred(), &sid);
-
-	if (!sid) return false;
-	if (security_secid_to_secctx(sid, &ctx, &len)) return false;
-	if (!ctx || !len) goto out;
-
-	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
-		const char *needle = allowed_domain_substrings[i];
-		if (needle && *needle) {
-			if (strnstr(ctx, needle, len)) { ok = true; break; }
-		}
-	}
-out:
-	security_release_secctx(ctx, len);
-	return ok;
-#else
-	return false;
-#endif
 }
 
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
@@ -247,11 +153,8 @@ static int bbg_get_cmdline(char *buf, int buflen)
 	return n;
 }
 
-static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int cmd_opt)
+static void bbg_log_deny_detail(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
-	u32 sid = 0;
-	char *ctx = NULL;
-	u32 len = 0;
 	const int PATH_BUFLEN = 256;
 	const int CMD_BUFLEN  = 256;
 
@@ -259,30 +162,22 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	char *cmdbuf  = kmalloc(CMD_BUFLEN,  GFP_ATOMIC);
 
 	const char *path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
-	struct inode *inode = file ? file_inode(file) : NULL;
 	dev_t dev = inode ? inode->i_rdev : 0;
 
 	if (cmdbuf)
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
-	security_cred_getsecid_compat(current_cred(), &sid);
-
-	if (!sid || security_secid_to_secctx(sid, &ctx, &len) || !ctx || !len) {
-		ctx = "unknown";
-		len = strlen("unknown");
-	}
-
 	if (cmd_opt) {
 		pr_info(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
+			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, len, ctx, current->comm,
+			path ? path : "?", current->pid, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	} else {
 		pr_info(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d selinux_domain: %.*s comm=%s argv=\"%s\"\n",
+			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, len, ctx, current->comm,
+			path ? path : "?", current->pid, current->comm,
 			cmdbuf ? cmdbuf : "?");
 	}
 
@@ -290,11 +185,11 @@ static void bbg_log_deny_detail(const char *why, struct file *file, unsigned int
 	kfree(pathbuf);
 }
 
-static int deny(const char *why, struct file *file, unsigned int cmd_opt)
+static int deny(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
-	if (!BB_ENFORCING) return 0;
-	bbg_log_deny_detail(why, file, cmd_opt);
+	bbg_log_deny_detail(why, file, inode, cmd_opt);
 	bb_pr_rl("deny %s pid=%d comm=%s\n", why, current->pid, current->comm);
+	if (!BB_ENFORCING) return 0;
 	return -EPERM;
 }
 
@@ -308,13 +203,122 @@ static int bb_file_permission(struct file *file, int mask)
 	inode = file_inode(file);
 	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (likely(current_domain_allowed()))
+	if (likely(current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
 		return 0;
 
-	return deny("write to protected partition", file, 0);
+	return deny("write to protected partition", file, inode, 0);
+}
+
+static inline int is_protected_blkdev(struct dentry *dentry)
+{
+    struct inode *inode;
+
+    if (!dentry)
+        return 0;
+
+    inode = d_backing_inode(dentry); // fix just rename blkdev to zramxxx bypass
+    if (!inode)
+        return 0;
+
+    if (unlikely(S_ISBLK(inode->i_mode))) {
+        if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+            return 0;
+
+        return 1;
+    }
+
+	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
+    if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
+		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, NULL);
+		int result = 0;
+		struct path target_path;
+
+		if (IS_ERR_OR_NULL(symlink_target_link))
+        	return 0;
+		if (symlink_target_link[0] != '/') 
+			return 0;// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
+		
+		if (kern_path(symlink_target_link, LOOKUP_FOLLOW, &target_path) == 0) {
+        	struct inode *target_inode = d_backing_inode(target_path.dentry);
+        	if (target_inode && S_ISBLK(target_inode->i_mode)) {
+            	result = 1;
+        	}
+        	path_put(&target_path);
+    	}
+		return result;
+    }
+
+    return 0;
+}
+
+static dev_t byname_dev = 0;
+static unsigned long byname_ino = 0;
+
+static int is_bb_byname_dir(struct inode *dir)
+{
+	if (unlikely(byname_ino == 0)) {
+        struct path path;
+        if (kern_path(BB_BYNAME_DIR, LOOKUP_FOLLOW, &path) == 0) {
+            struct inode *inode = d_backing_inode(path.dentry);
+            if (inode) {
+                byname_dev = inode->i_sb->s_dev;
+                byname_ino = inode->i_ino;
+            }
+            path_put(&path);
+        } else {
+            return 0;
+        }
+    }
+
+    if (dir->i_ino == byname_ino && dir->i_sb->s_dev == byname_dev)
+        return 1;
+
+    return 0;
+}
+
+static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char *name)
+{
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if (unlikely(is_bb_byname_dir(dir))) {
+		return deny("create symlink on BB_BYNAME_DIR", 0, dir, 0);
+	} // i don't want check allowlist in there, because root process WHY create symlink in /dev/block/by-name?
+
+	return 0;	
+}
+
+static int bb_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
+                           struct inode *new_dir, struct dentry *new_dentry)
+{
+    if (!old_dentry)
+        return 0;
+
+    if (unlikely(is_protected_blkdev(old_dentry)))
+        return deny("rename on protected block device", 0, d_inode(old_dentry), 0);
+
+    if (unlikely(new_dentry && is_protected_blkdev(new_dentry)))
+        return deny("rename on protected target block device's symlink", 0, d_inode(new_dentry), 0);
+
+    return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static int bb_inode_setattr(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *iattr)
+#else
+static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr) 
+#endif
+{
+	if (current_process_trusted())
+        return 0;
+
+	if (is_protected_blkdev(dentry))
+		return deny("setattr on protected partition", 0, d_inode(dentry), 0);
+
+	return 0;	
 }
 
 static inline bool is_destructive_ioctl(unsigned int cmd)
@@ -355,38 +359,56 @@ static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (!is_destructive_ioctl(cmd))
 		return 0;
 
-	if (likely(current_domain_allowed()))
+	if (likely(current_process_trusted()))
 		return 0;
 
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
 		return 0;
 
-	return deny("destructive ioctl on protected partition", file, cmd);
+	return deny("destructive ioctl on protected partition", file, inode, cmd);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+#ifdef BB_HAS_IOCTL_COMPAT
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return bb_file_ioctl(file, cmd, arg);
 }
 #endif
 
+extern int bb_bprm_set_creds(struct linux_binprm *bprm);
+extern void bb_cred_transfer(struct cred *new, const struct cred *old);
+extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
+
 static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
+	LSM_HOOK_INIT(bprm_creds_for_exec,  bb_bprm_set_creds),
+#else
+	LSM_HOOK_INIT(bprm_set_creds, 		bb_bprm_set_creds),
+#endif
+	LSM_HOOK_INIT(cred_transfer, 		bb_cred_transfer),
+	LSM_HOOK_INIT(cred_prepare, 	    bb_cred_prepare),
+
+#ifdef BB_HAS_IOCTL_COMPAT
 	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
 #endif
+	LSM_HOOK_INIT(inode_rename,			bb_inode_rename),
+	LSM_HOOK_INIT(inode_symlink,		bb_inode_symlink),
 };
 
 static int __init bbg_init(void)
 {
-	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks));
+	security_add_hooks_compat(bb_hooks, ARRAY_SIZE(bb_hooks)); // init lsm hooks and print version notice
 	pr_info("baseband_guard power by https://t.me/qdykernel\n");
 	pr_info("baseband_guard repo: %s", __stringify(BBG_REPO));
 	pr_info("baseband_guard version: %s", __stringify(BBG_VERSION));
 	return 0;
 }
+
+extern struct lsm_blob_sizes bbg_blob_sizes;
 
 #ifndef BBG_USE_DEFINE_LSM
 security_initcall(bbg_init);
@@ -394,73 +416,12 @@ security_initcall(bbg_init);
 DEFINE_LSM(baseband_guard) = {
 	.name = "baseband_guard",
 	.init = bbg_init,
+	.blobs = &bbg_blob_sizes
 };
 #endif
-
-#ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int bbg_process_setpermissive(void) {
-#if BB_ANTI_SPOOF_NO_TRUST_PERMISSIVE_ONCE
-	if (!bbg_recently_permissive) bbg_recently_permissive = true;
-	return 0;
-#elif BB_ANTI_SPOOF_DISABLE_PERMISSIVE
-	return 1;
-#else
-	return 0;
-#endif
-}
-#endif
-
-int bbg_test_domain_transition(u32 target_secid) {
-#ifdef CONFIG_BBG_DOMAIN_PROTECTION
-    u32 sid = 0;
-    char *ctx = NULL;
-    u32 len = 0;
-    int ok = 0;
-	size_t i;
-
-    security_cred_getsecid_compat(current_cred(), &sid); // 检查是否为su域
-    if (!sid)
-        return 0;
-    if (security_secid_to_secctx(sid, &ctx, &len))
-        return 0;
-
-    if (ctx && len) {
-        if (strnstr(ctx, ":su:", len)) {
-            ok = 1;
-        }
-    }
-
-    security_release_secctx(ctx, len);
-
-	if (!ok) return 0;
-	ok = 0;
-
-	if (security_secid_to_secctx(target_secid, &ctx, &len)) // 检查切换目标是否为允许操作磁盘的域
-        return 0;
-    if (!ctx || !len) goto out;
-
-	for (i = 0; i < allowed_domain_substrings_cnt; i++) {
-		const char *needle = allowed_domain_substrings[i];
-		if (needle && *needle) {
-			if (strnstr(ctx, needle, len)) { ok = 1; break; }
-		}
-	}
-out:
-	if (ok) { // 如果全部符合，打印日志，并且根据是否强制执行来决定是否拦截域转换
-            pr_info("baseband_guard: deny domain transition, target domain: %.*s, current PID: %d\n",
-                    len, ctx, current->pid);
-        }
-	security_release_secctx(ctx, len);
-    if (!BB_ENFORCING)
-        return 0;
-
-    return ok;
-#else
-    return 0;
-#endif
-}
 
 MODULE_DESCRIPTION("protect All Block & Power by TG@qdykernel");
 MODULE_AUTHOR("秋刀鱼 & https://t.me/qdykernel");
 MODULE_LICENSE("GPL v2");
+
 

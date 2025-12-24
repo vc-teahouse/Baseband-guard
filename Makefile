@@ -1,4 +1,10 @@
-obj-$(CONFIG_BBG) += baseband_guard.o
+bbg-objs += baseband_guard.o
+bbg-objs += tracing/tracing.o
+
+ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
+ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
+
+obj-$(CONFIG_BBG) += bbg.o
 
 GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 
@@ -18,6 +24,10 @@ ifeq ($(strip $(REPO_LINK)),)
 endif
 ifeq ($(strip $(COMMIT_SHA)),)
   COMMIT_SHA := unknown
+endif
+
+ifeq ($(shell grep -q "file_ioctl_compat" $(srctree)/include/linux/lsm_hook_defs.h $(srctree)/include/linux/lsm_hooks.h 2>/dev/null && echo true),true)
+    ccflags-y += -DBB_HAS_IOCTL_COMPAT
 endif
 
 HAS_DEFINE_LSM := $(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
@@ -43,5 +53,5 @@ endif
 $(info -- BBG was enabled!)
 $(info -- BBG version: $(COMMIT_SHA))
 $(info -- BBG repo: $(REPO_LINK))
-ccflags-y += -DBBG_VERSION=$(COMMIT_SHA)
-ccflags-y += -DBBG_REPO=$(REPO_LINK)
+ccflags-y += -DBBG_VERSION=\"$(COMMIT_SHA)\"
+ccflags-y += -DBBG_REPO=\"$(REPO_LINK)\"

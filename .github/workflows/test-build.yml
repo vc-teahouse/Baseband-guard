@@ -139,22 +139,13 @@ jobs:
           printf '\nobj-$(CONFIG_BBG) += baseband-guard/\n' >> "$SECURITY_MAKEFILE" && echo " - Makefile updated"
           # Kconfig source (insert before last endmenu; fallback append)
           grep -q "source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" || sed -i "/endmenu/i\source \"security/baseband-guard/Kconfig\"" "$SECURITY_KCONFIG" && echo " - Kconfig updated"
-          # apply sepatch.txt
-          cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
-          sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
-          sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
-          cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-          echo "Selinux Makefile patching done!"
-          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' $SECURITY_KCONFIG
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' $SECURITY_KCONFIG
 
       - name: Apply Kernel Configuration
         run: |
           cd "$CONFIG"
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
-          if [ "${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}" == "android16-6.12" ]; then
-            sed -i '/_X86_GKI_MODULES_LIST = \[/ i\_ARM64_GKI_MODULES_LIST.remove("drivers/android/binder/rust_binder.ko")\n' ./common/modules.bzl
-          fi
 
       # Hey,rust_binder.ko,maybe we need to talk about why you makes build failed
       - name: Append ashmem exports if missing
@@ -187,5 +178,5 @@ jobs:
           if [ -f "build/build.sh" ]; then
             LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
           else
-            tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+            tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast //common:kernel_aarch64_dist || exit 1
           fi

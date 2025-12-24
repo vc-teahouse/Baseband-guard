@@ -19,13 +19,25 @@ initialize_variables() {
         echo '[ERROR] "security/" directory not found.'
         exit 127
     fi
+
+    if [ -d "$GKI_ROOT/include" ]; then
+        INCLUDE_DIR="$GKI_ROOT/include"
+    elif [ -d "$GKI_ROOT/common/security" ]; then
+        INCLUDE_DIR="$GKI_ROOT/common/include"
+    else
+        echo '[ERROR] "include/" directory not found.'
+        exit 127
+    fi
+    
     SECURITY_MAKEFILE="$SECURITY_DIR/Makefile"
     SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
     BBG_DIR="$GKI_ROOT/Baseband-guard"
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
     BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
+    SELINUX_OBJSEC="$SECURITY_DIR/selinux/include/objsec.h"
     PATCH_FILE="$BBG_DIR/sepatch.txt"
+    LSM_HOOKS_H="$INCLUDE_DIR/linux/lsm_hooks.h"
 }
 
 # Revert changes
@@ -40,6 +52,9 @@ perform_cleanup() {
     fi
     if [ -f "${SELINUX_MAKEFILE}.bak" ]; then
         rm -f $SELINUX_MAKEFILE && mv "${SELINUX_MAKEFILE}.bak" "$SELINUX_MAKEFILE"; echo " - Selinux Makefile reverted"
+    fi
+    if [ -f "${SELINUX_OBJSEC}.bak" ]; then
+        rm -f $SELINUX_OBJSEC && mv "${SELINUX_OBJSEC}.bak" "$SELINUX_OBJSEC"; echo " - Selinux objsec.h reverted"
     fi
     [ -d "$BBG_DIR" ] && rm -rf "$BBG_DIR" && echo " - Baseband-guard dir deleted"
 }
@@ -70,16 +85,14 @@ setup_baseband_guard() {
     fi
 
     # Symlink security/baseband-guard -> ../Baseband-guard
-    (
-      cd "$SECURITY_DIR"
-      # prefer relative path; fall back to absolute if realpath --relative-to not available
-      if command -v realpath >/dev/null 2>&1; then
-          rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
-      else
-          rel="$BBG_DIR"
-      fi
-      ln -sfn "$rel" "$BBG_SYMLINK"
-    )
+    cd "$SECURITY_DIR"
+    # prefer relative path; fall back to absolute if realpath --relative-to not available
+    if command -v realpath >/dev/null 2>&1; then
+        rel="$(realpath --relative-to="$SECURITY_DIR" "$BBG_DIR" 2>/dev/null || true)"
+    else
+        rel="$BBG_DIR"
+    fi
+    ln -sfn "$rel" "$BBG_SYMLINK"
     echo " - symlink created"
 
     # Makefile entry (idempotent)
@@ -106,22 +119,43 @@ setup_baseband_guard() {
         echo " - Kconfig updated"
     fi
     
-    # Selinux Makefile patch
-    if [ ! -f "$SELINUX_MAKEFILE" ]; then
-        echo "Error: '$SELINUX_MAKEFILE' not found!"
+    # nongki compatible
+
+    if [ ! -f "$LSM_HOOKS_H" ]; then
+        echo "Error: Cannot find lsm_hooks.h at $LSM_HOOKS_H"
         exit 1
     fi
 
-    if [ ! -f "$PATCH_FILE" ]; then
-        echo "Error: patching code '$PATCH_FILE' not found! "
-        exit 1
-    fi
+    if ! grep -q "#define DEFINE_LSM(lsm)" "$LSM_HOOKS_H"; then
+        echo "Modern LSM infrastructure not detected (pre-5.1 kernel style)."
+        echo "Applying Selinux patch for BBG..."
 
-    cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
-    sed -i 's/selinuxfs.o //g' "$SELINUX_MAKEFILE"
-    sed -i 's/hooks.o //g' "$SELINUX_MAKEFILE"
-    cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
-    echo "Selinux Makefile patching done!"
+        if [ ! -f "$SELINUX_MAKEFILE" ]; then
+            echo "Error: '$SELINUX_MAKEFILE' not found!"
+            exit 1
+        fi
+    
+        if [ ! -f "$SELINUX_OBJSEC" ]; then
+            echo "Error: '$SELINUX_OBJSEC' not found!"
+            exit 1
+        fi
+
+        if [ ! -f "$PATCH_FILE" ]; then
+            echo "Error: patching code '$PATCH_FILE' not found! "
+            exit 1
+        fi
+
+        cp $SELINUX_MAKEFILE ${SELINUX_MAKEFILE}.bak
+        cp $SELINUX_OBJSEC ${SELINUX_OBJSEC}.bak
+        cat "$PATCH_FILE" >> "$SELINUX_MAKEFILE"
+        sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' "$SELINUX_OBJSEC"
+        sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' "$SELINUX_OBJSEC"
+        ln -sfn "../../$rel/tracing/tracing.h" "$SECURITY_DIR/selinux/include/bbg_tracing.h" # symlink tracing.h
+        echo "Selinux patching done!"
+    else
+        echo "Modern LSM infrastructure detected (GKI/Modern Kernel). Skipping Selinux patch."
+        echo "BBG will use standard LSM blob management."
+    fi
 
     echo "[+] Done."
 }
