@@ -1,7 +1,7 @@
 
 ifeq ($(CONFIG_BBG),y)
 
-ifeq ($(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true),true)
+ifneq ($(shell grep -q '#define DEFINE_LSM(lsm)' $(srctree)/include/linux/lsm_hooks.h && echo y),)
 ccflags-y += -DBBG_USE_DEFINE_LSM
 endif
 
