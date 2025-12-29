@@ -48,12 +48,18 @@ static bool inline resolve_byname_dev(const char *name, dev_t *out)
 	return true;
 }
 
-struct allow_node { dev_t dev; struct hlist_node h; };
+struct device_hash_node { dev_t dev; struct hlist_node h; };
 DEFINE_HASHTABLE(allowed_devs, 7);
+
+DEFINE_HASHTABLE(blocked_devs, 7);
 
 static bool allow_has(dev_t dev)
 {
-	struct allow_node *p;
+	struct device_hash_node *p;
+
+	hash_for_each_possible(blocked_devs, p, h, (u64)dev) // process blocklist
+		if (p->dev == dev) return false;
+
 	hash_for_each_possible(allowed_devs, p, h, (u64)dev)
 		if (p->dev == dev) return true;
 	return false;
@@ -61,13 +67,24 @@ static bool allow_has(dev_t dev)
 
 static void allow_add(dev_t dev)
 {
-	struct allow_node *n;
+	struct device_hash_node *n;
 	if (!dev || allow_has(dev)) return;
 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
 	if (!n) return;
 	n->dev = dev;
 	hash_add(allowed_devs, &n->h, (u64)dev);
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
+}
+
+static void block_add(dev_t dev)
+{
+	struct device_hash_node *n;
+	if (!dev || allow_has(dev)) return;
+	n = kmalloc(sizeof(*n), GFP_ATOMIC);
+	if (!n) return;
+	n->dev = dev;
+	hash_add(blocked_devs, &n->h, (u64)dev);
+	bb_pr("block-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
 }
 
 static inline bool is_allowed_partition_dev_resolve(dev_t cur)
@@ -219,15 +236,18 @@ static inline int is_protected_blkdev(struct dentry *dentry)
     if (!dentry)
         return 0;
 
-    inode = d_backing_inode(dentry); // fix just rename blkdev to zramxxx bypass
+    inode = d_backing_inode(dentry);
     if (!inode)
         return 0;
 
-    if (unlikely(S_ISBLK(inode->i_mode))) {
+    if (unlikely(S_ISBLK(inode->i_mode))) { // just add blkdevs into blocklist for now, to avoid rename to zramxxx
         if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
-            return 0;
+			return 0;
 
-        return 1;
+		// mean we are processing protect devices, add them to blocklist!!! 
+		block_add(inode->i_rdev);
+
+        return 0;
     }
 
 	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
