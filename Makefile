@@ -12,6 +12,7 @@ else
   $(info -- Baseband-guard: flask.h not found, starting generation)
   $(shell $(HOSTCC) -I$(srctree)/scripts/selinux/genheaders -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89  -I$(srctree)/include/uapi  -I$(srctree)/include  -I$(srctree)/security/selinux/include -o $(objtree)/genheaders $(srctree)/scripts/selinux/genheaders/genheaders.c)
   $(shell $(objtree)/genheaders flask.h av_permissions.h)
+  $(shell mkdir -p $(objtree)/security/selinux)
   $(shell mv $(objtree)/flask.h $(objtree)/av_permissions.h $(objtree)/security/selinux)
 endif
 
