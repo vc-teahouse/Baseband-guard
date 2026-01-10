@@ -58,6 +58,12 @@ jobs:
             sub_level: "X"
             os_patch_level: "lts"
 
+          # Android 17 - Kernel 6.18 LTS
+          - android_version: "android17"
+            kernel_version: "6.18"
+            sub_level: ""
+            os_patch_level: ""
+            
     name: Build Check - ${{ matrix.kernel_config.android_version }} (Kernel ${{ matrix.kernel_config.kernel_version }})
     
     steps:
@@ -77,8 +83,10 @@ jobs:
       - name: Set CONFIG Environment Variable
         run: |
           # Set CONFIG dynamically based on matrix values
-          CONFIG="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}-${{ matrix.kernel_config.sub_level }}"
-
+          CONFIG="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}"
+          if [ ! -z "${{ matrix.kernel_config.sub_level }}" ]; then
+             CONFIG+="-${{ matrix.kernel_config.sub_level }}"
+          fi
           # Set CONFIG as an environment variable for future steps
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
 
@@ -105,7 +113,10 @@ jobs:
         run: |
           cd "$CONFIG"
           
-          FORMATTED_BRANCH="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}-${{ matrix.kernel_config.os_patch_level }}"
+          FORMATTED_BRANCH="${{ matrix.kernel_config.android_version }}-${{ matrix.kernel_config.kernel_version }}"
+          if [ ! -z "${{ matrix.kernel_config.os_patch_level }}" ]; then
+           FORMATTED_BRANCH+="-${{ matrix.kernel_config.os_patch_level }}"
+          fi
           
           $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
           
