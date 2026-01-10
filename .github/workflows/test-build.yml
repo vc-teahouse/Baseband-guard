@@ -58,7 +58,7 @@ jobs:
             sub_level: "X"
             os_patch_level: "lts"
 
-          # Android 17 - Kernel 6.18 LTS
+          # Android 17 - Kernel 6.18
           - android_version: "android17"
             kernel_version: "6.18"
             sub_level: ""
