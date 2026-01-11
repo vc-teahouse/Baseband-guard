@@ -158,7 +158,7 @@ jobs:
 
       # Hey,rust_binder.ko,maybe we need to talk about why you makes build failed
       - name: Append ashmem exports if missing
-        if: startsWith(matrix.kernel_config.android_version, 'android16')
+        if: matrix.kernel_config.android_version != 'android12' && matrix.kernel_config.android_version != 'android13' && matrix.kernel_config.android_version != 'android14' && matrix.kernel_config.android_version != 'android15'
         run: |
           cd "$CONFIG"
           FILE=common/drivers/staging/android/ashmem.c
