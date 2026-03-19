@@ -216,7 +216,7 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 {
     struct inode *inode;
 
-    if (!dentry)
+    if (!IS_ERR_OR_NULL(dentry))
         return 0;
 
     inode = d_backing_inode(dentry); // fix just rename blkdev to zramxxx bypass
@@ -232,15 +232,22 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 
 	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
     if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
-		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, NULL);
+		DEFINE_DELAYED_CALL(done);
+		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, &done);
 		int result = 0;
 		struct path target_path;
 
-		if (IS_ERR_OR_NULL(symlink_target_link))
-        	return 0;
-		if (symlink_target_link[0] != '/') 
-			return 0;// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
-		
+		if (IS_ERR_OR_NULL(symlink_target_link)) {
+			result = 0;
+        	goto out;
+		}
+
+		if (symlink_target_link[0] != '/') {
+			// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
+			result = 0;
+			goto out;
+		}
+
 		if (kern_path(symlink_target_link, LOOKUP_FOLLOW, &target_path) == 0) {
         	struct inode *target_inode = d_backing_inode(target_path.dentry);
         	if (target_inode && S_ISBLK(target_inode->i_mode)) {
@@ -248,6 +255,9 @@ static inline int is_protected_blkdev(struct dentry *dentry)
         	}
         	path_put(&target_path);
     	}
+out:
+		do_delayed_call(&done);
+		clear_delayed_call(&done);
 		return result;
     }
 
