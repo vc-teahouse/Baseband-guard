@@ -35,6 +35,7 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 {
 	static int su_sid = -1;
 	static int magisk_sid = -1;
+	static int ksu_sid = -1;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
 	struct task_security_struct *new_selinux_tsec;
 	const struct task_security_struct *old_selinux_tsec;
@@ -51,7 +52,7 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 	old_bbg_tsec = bbg_cred(current_cred());
 
 	new_bbg_tsec->is_untrusted_process = old_bbg_tsec->is_untrusted_process;
-	
+
 	if (new_bbg_tsec->is_untrusted_process) {
 		return 0; // already flag as untrusted_process, no need check current domain
 	}
@@ -70,9 +71,18 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 		}
 	}
 
+	if (ksu_sid == -1) {
+                if (security_secctx_to_secid("u:r:ksu:s0", strlen("u:r:ksu:s0"), &ksu_sid) != 0) {
+                        ksu_sid = -EINVAL;
+                }
+        }
+
 	if (unlikely(
-		old_selinux_tsec->sid == su_sid || old_selinux_tsec->osid == su_sid || // kernelsu
+		old_selinux_tsec->sid == su_sid || old_selinux_tsec->osid == su_sid || // kernelsu old
 		new_selinux_tsec->sid == su_sid || new_selinux_tsec->osid == su_sid ||
+
+                old_selinux_tsec->sid == ksu_sid || old_selinux_tsec->osid == ksu_sid || // kernelsu new
+                new_selinux_tsec->sid == ksu_sid || new_selinux_tsec->osid == ksu_sid ||
 
 		old_selinux_tsec->sid == magisk_sid || old_selinux_tsec->osid == magisk_sid || // magisk/apatch
 		new_selinux_tsec->sid == magisk_sid || new_selinux_tsec->osid == magisk_sid
