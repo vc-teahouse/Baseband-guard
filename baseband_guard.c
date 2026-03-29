@@ -233,7 +233,11 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 {
     struct inode *inode;
 
-    if (!IS_ERR_OR_NULL(dentry))
+    /*
+     * Bug fix: was "!IS_ERR_OR_NULL(dentry)" which is inverted — it returned 0
+     * for every valid dentry, making all protection logic unreachable dead code.
+     */
+    if (IS_ERR_OR_NULL(dentry))
         return 0;
 
     inode = d_backing_inode(dentry);
@@ -253,9 +257,26 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
     if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
 		DEFINE_DELAYED_CALL(done);
-		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, &done);
+		const char *symlink_target_link;
 		int result = 0;
 		struct path target_path;
+
+		/*
+		 * Fast symlinks (e.g. short tmpfs/shmem/ramfs symlinks) store the
+		 * target inline in inode->i_link, not in the page cache. Calling
+		 * inode->i_op->get_link (which may be page_get_link) on such inodes
+		 * causes a NULL pointer dereference when inode->i_mapping->a_ops is
+		 * not initialized. Use inode->i_link directly for fast symlinks.
+		 *
+		 * Fast symlinks targeting /dev/block/by-name are extremely unlikely
+		 * (target strings are long absolute paths), so this is safe to skip
+		 * the full get_link dance for them.
+		 */
+		if (inode->i_link) {
+			symlink_target_link = inode->i_link;
+		} else {
+			symlink_target_link = inode->i_op->get_link(dentry, inode, &done);
+		}
 
 		if (IS_ERR_OR_NULL(symlink_target_link)) {
 			result = 0;
