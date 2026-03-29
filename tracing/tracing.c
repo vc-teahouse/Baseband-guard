@@ -3,6 +3,13 @@
 #include <linux/errno.h>
 #include <linux/cred.h>
 
+int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
+void bb_cred_transfer(struct cred *new, const struct cred *old);
+int bb_bprm_set_creds(struct linux_binprm *bprm);
+
+int __maybe_unused bbg_process_setpermissive(void);
+int __maybe_unused bbg_test_domain_transition(u32 target_secid);
+
 #ifdef BBG_USE_DEFINE_LSM
 struct lsm_blob_sizes bbg_blob_sizes __ro_after_init = {
 	.lbs_cred = sizeof(struct bbg_cred_security_struct),

@@ -96,11 +96,12 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 	for (i = 0; i < allowlist_cnt; i++) {
 		const char *n = allowlist_names[i];
 		bool ok = false;
+		char *nm, *na, *nb;
 
 		if (resolve_byname_dev(n, &dev) && dev == cur) return true;
 
-		if (!ok && suf) {
-			char *nm = kasprintf(GFP_ATOMIC, "%s%s", n, suf);
+		if (suf) {
+			nm = kasprintf(GFP_ATOMIC, "%s%s", n, suf);
 			if (nm) {
 				ok = resolve_byname_dev(nm, &dev);
 				kfree(nm);
@@ -108,13 +109,14 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 			}
 		}
 		if (!ok) {
-			char *na = kasprintf(GFP_ATOMIC, "%s_a", n);
-			char *nb = kasprintf(GFP_ATOMIC, "%s_b", n);
+			na = kasprintf(GFP_ATOMIC, "%s_a", n);
 			if (na) {
 				ok = resolve_byname_dev(na, &dev);
 				kfree(na);
-				if (ok && dev == cur) { if (nb) kfree(nb); return true; }
+				if (ok && dev == cur) return true;
 			}
+			
+			nb = kasprintf(GFP_ATOMIC, "%s_b", n);
 			if (nb) {
 				ok = resolve_byname_dev(nb, &dev);
 				kfree(nb);
@@ -233,7 +235,7 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 {
     struct inode *inode;
 
-    if (!IS_ERR_OR_NULL(dentry))
+    if (IS_ERR_OR_NULL(dentry))
         return 0;
 
     inode = d_backing_inode(dentry);
@@ -253,7 +255,7 @@ static inline int is_protected_blkdev(struct dentry *dentry)
 	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
     if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
 		DEFINE_DELAYED_CALL(done);
-		const char* symlink_target_link = inode->i_op->get_link(dentry, inode, &done);
+		const char* symlink_target_link = vfs_get_link(dentry, &done);
 		int result = 0;
 		struct path target_path;
 
@@ -324,7 +326,7 @@ static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char
 static int bb_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
                            struct inode *new_dir, struct dentry *new_dentry)
 {
-    if (!old_dentry)
+    if (IS_ERR_OR_NULL(old_dentry))
         return 0;
 
     if (unlikely(is_protected_blkdev(old_dentry)))

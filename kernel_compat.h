@@ -3,6 +3,7 @@
 #include <linux/lsm_hooks.h>
 #include <linux/version.h>
 #include "objsec.h"
+#include "blk.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
