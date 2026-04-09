@@ -57,7 +57,7 @@ Baseband-guard, as an **LSM module**, installs hooks in the kernel’s file writ
 
 1. **Run setup script**: Simply run the following in your kernel source directory:  
    ```bash
-   wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+   wget -O- https://github.com/showdo/Baseband-guard/raw/main/setup.sh | bash
    ```
 
 2. **Enable kernel config**: In `menuconfig` / `defconfig`, enable:  
@@ -94,4 +94,4 @@ This project is licensed under **GPL-2.0**. See `LICENSE` for details.
 
 ### Repository
 
-- GitHub: [vc-teahouse/Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)
+- GitHub: [showdo/Baseband-guard](https://github.com/showdo/Baseband-guard)

@@ -33,7 +33,7 @@ initialize_variables() {
     SECURITY_KCONFIG="$SECURITY_DIR/Kconfig"
     BBG_DIR="$GKI_ROOT/Baseband-guard"
     BBG_SYMLINK="$SECURITY_DIR/baseband-guard"
-    BBG_REPO="https://github.com/vc-teahouse/Baseband-guard"
+    BBG_REPO="https://github.com/showdo/Baseband-guard"
     SELINUX_MAKEFILE="$SECURITY_DIR/selinux/Makefile"
     SELINUX_OBJSEC="$SECURITY_DIR/selinux/include/objsec.h"
     PATCH_FILE="$BBG_DIR/sepatch.txt"
