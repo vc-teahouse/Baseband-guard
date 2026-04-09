@@ -48,42 +48,140 @@ static bool inline resolve_byname_dev(const char *name, dev_t *out)
 	return true;
 }
 
-struct device_hash_node { dev_t dev; struct hlist_node h; };
-DEFINE_HASHTABLE(allowed_devs, 7);
+struct device_hash_node {
+	dev_t dev;
+	struct hlist_node h;
+	struct list_head lru;
+	struct rcu_head rcu;
+};
 
+static DEFINE_SPINLOCK(bbg_cache_lock);
+static LIST_HEAD(bbg_lru_list);
+static unsigned int bbg_cache_count;
+
+#define BBG_CACHE_MAX 256
+
+DEFINE_HASHTABLE(allowed_devs, 7);
 DEFINE_HASHTABLE(blocked_devs, 7);
+
+static void bbg_node_free_rcu(struct rcu_head *head)
+{
+	struct device_hash_node *node =
+		container_of(head, struct device_hash_node, rcu);
+	kfree(node);
+}
 
 static bool allow_has(dev_t dev)
 {
 	struct device_hash_node *p;
+	bool ret = false;
 
-	hash_for_each_possible(blocked_devs, p, h, (u64)dev) // process blocklist
-		if (p->dev == dev) return false;
+	rcu_read_lock();
+	hash_for_each_possible_rcu(blocked_devs, p, h, (u64)dev) {
+		if (p->dev == dev) {
+			ret = false;
+			goto out;
+		}
+	}
+	hash_for_each_possible_rcu(allowed_devs, p, h, (u64)dev) {
+		if (p->dev == dev) {
+			ret = true;
+			goto out;
+		}
+	}
+out:
+	rcu_read_unlock();
+	return ret;
+}
 
-	hash_for_each_possible(allowed_devs, p, h, (u64)dev)
-		if (p->dev == dev) return true;
-	return false;
+static void bbg_cache_shrink(void)
+{
+	struct device_hash_node *victim;
+
+	while (bbg_cache_count >= BBG_CACHE_MAX) {
+		victim = list_first_entry_or_null(&bbg_lru_list,
+						  struct device_hash_node, lru);
+		if (!victim)
+			break;
+
+		list_del(&victim->lru);
+		hlist_del_rcu(&victim->h);
+		bbg_cache_count--;
+		call_rcu(&victim->rcu, bbg_node_free_rcu);
+	}
 }
 
 static void allow_add(dev_t dev)
 {
 	struct device_hash_node *n;
-	if (!dev || allow_has(dev)) return;
+
+	spin_lock(&bbg_cache_lock);
+	if (!dev) {
+		spin_unlock(&bbg_cache_lock);
+		return;
+	}
+	hash_for_each_possible(allowed_devs, n, h, (u64)dev) {
+		if (n->dev == dev) {
+			spin_unlock(&bbg_cache_lock);
+			return;
+		}
+	}
+	hash_for_each_possible(blocked_devs, n, h, (u64)dev) {
+		if (n->dev == dev) {
+			spin_unlock(&bbg_cache_lock);
+			return;
+		}
+	}
+
+	bbg_cache_shrink();
+
 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
-	if (!n) return;
+	if (!n) {
+		spin_unlock(&bbg_cache_lock);
+		return;
+	}
 	n->dev = dev;
-	hash_add(allowed_devs, &n->h, (u64)dev);
+	hash_add_rcu(allowed_devs, &n->h, (u64)dev);
+	list_add_tail(&n->lru, &bbg_lru_list);
+	bbg_cache_count++;
+	spin_unlock(&bbg_cache_lock);
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
 }
 
 static void block_add(dev_t dev)
 {
 	struct device_hash_node *n;
-	if (!dev || allow_has(dev)) return;
+
+	spin_lock(&bbg_cache_lock);
+	if (!dev) {
+		spin_unlock(&bbg_cache_lock);
+		return;
+	}
+	hash_for_each_possible(allowed_devs, n, h, (u64)dev) {
+		if (n->dev == dev) {
+			spin_unlock(&bbg_cache_lock);
+			return;
+		}
+	}
+	hash_for_each_possible(blocked_devs, n, h, (u64)dev) {
+		if (n->dev == dev) {
+			spin_unlock(&bbg_cache_lock);
+			return;
+		}
+	}
+
+	bbg_cache_shrink();
+
 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
-	if (!n) return;
+	if (!n) {
+		spin_unlock(&bbg_cache_lock);
+		return;
+	}
 	n->dev = dev;
-	hash_add(blocked_devs, &n->h, (u64)dev);
+	hash_add_rcu(blocked_devs, &n->h, (u64)dev);
+	list_add_tail(&n->lru, &bbg_lru_list);
+	bbg_cache_count++;
+	spin_unlock(&bbg_cache_lock);
 	bb_pr("block-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
 }
 
@@ -101,7 +199,7 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 		if (resolve_byname_dev(n, &dev) && dev == cur) return true;
 
 		if (suf) {
-			nm = kasprintf(GFP_ATOMIC, "%s%s", n, suf);
+			nm = kasprintf(GFP_KERNEL, "%s%s", n, suf);
 			if (nm) {
 				ok = resolve_byname_dev(nm, &dev);
 				kfree(nm);
@@ -109,14 +207,14 @@ static inline bool is_allowed_partition_dev_resolve(dev_t cur)
 			}
 		}
 		if (!ok) {
-			na = kasprintf(GFP_ATOMIC, "%s_a", n);
+			na = kasprintf(GFP_KERNEL, "%s_a", n);
 			if (na) {
 				ok = resolve_byname_dev(na, &dev);
 				kfree(na);
 				if (ok && dev == cur) return true;
 			}
 			
-			nb = kasprintf(GFP_ATOMIC, "%s_b", n);
+			nb = kasprintf(GFP_KERNEL, "%s_b", n);
 			if (nb) {
 				ok = resolve_byname_dev(nb, &dev);
 				kfree(nb);
@@ -176,13 +274,16 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 {
 	const int PATH_BUFLEN = 256;
 	const int CMD_BUFLEN  = 256;
-
-	char *pathbuf = kmalloc(PATH_BUFLEN, GFP_ATOMIC);
-	char *cmdbuf  = kmalloc(CMD_BUFLEN,  GFP_ATOMIC);
-
-	const char *path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
+	char *pathbuf = NULL;
+	char *cmdbuf  = NULL;
+	const char *path = NULL;
 	dev_t dev = inode ? inode->i_rdev : 0;
 
+	pathbuf = kmalloc(PATH_BUFLEN, GFP_ATOMIC);
+	if (pathbuf)
+		path = bbg_file_path(file, pathbuf, PATH_BUFLEN);
+
+	cmdbuf = kmalloc(CMD_BUFLEN, GFP_ATOMIC);
 	if (cmdbuf)
 		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
 
