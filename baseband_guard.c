@@ -16,49 +16,14 @@
 #include "kernel_compat.h"
 #include "baseband_guard.h"
 #include "tracing/tracing.h"
-
-extern char *saved_command_line; 
-static const char *slot_suffix_from_cmdline(void)
-{
-	const char *p = saved_command_line;
-	if (!p) return NULL;
-	p = strstr(p, "androidboot.slot_suffix=");
-	if (!p) return NULL;
-	p += strlen("androidboot.slot_suffix=");
-	if (p[0] == '_' && (p[1] == 'a' || p[1] == 'b')) return (p[1] == 'a') ? "_a" : "_b";
-	return NULL;
-}
-
-static bool inline resolve_byname_dev(const char *name, dev_t *out)
-{
-	char *path;
-	dev_t dev;
-	int ret;
-
-	if (!name || !out) return false;
-
-	path = kasprintf(GFP_KERNEL, "%s/%s", BB_BYNAME_DIR, name);
-	if (!path) return false;
-
-	ret = lookup_bdev_compat(path, &dev);
-	kfree(path);
-	if (ret) return false;
-
-	*out = dev;
-	return true;
-}
+#include "blkdev_helper.h"
 
 struct device_hash_node { dev_t dev; struct hlist_node h; };
 DEFINE_HASHTABLE(allowed_devs, 7);
 
-DEFINE_HASHTABLE(blocked_devs, 7);
-
 static bool allow_has(dev_t dev)
 {
 	struct device_hash_node *p;
-
-	hash_for_each_possible(blocked_devs, p, h, (u64)dev) // process blocklist
-		if (p->dev == dev) return false;
 
 	hash_for_each_possible(allowed_devs, p, h, (u64)dev)
 		if (p->dev == dev) return true;
@@ -74,57 +39,6 @@ static void allow_add(dev_t dev)
 	n->dev = dev;
 	hash_add(allowed_devs, &n->h, (u64)dev);
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
-}
-
-static void block_add(dev_t dev)
-{
-	struct device_hash_node *n;
-	if (!dev || allow_has(dev)) return;
-	n = kmalloc(sizeof(*n), GFP_ATOMIC);
-	if (!n) return;
-	n->dev = dev;
-	hash_add(blocked_devs, &n->h, (u64)dev);
-	bb_pr("block-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
-}
-
-static inline bool is_allowed_partition_dev_resolve(dev_t cur)
-{
-	size_t i;
-	dev_t dev;
-	const char *suf = slot_suffix_from_cmdline();
-
-	for (i = 0; i < allowlist_cnt; i++) {
-		const char *n = allowlist_names[i];
-		bool ok = false;
-		char *nm, *na, *nb;
-
-		if (resolve_byname_dev(n, &dev) && dev == cur) return true;
-
-		if (suf) {
-			nm = kasprintf(GFP_ATOMIC, "%s%s", n, suf);
-			if (nm) {
-				ok = resolve_byname_dev(nm, &dev);
-				kfree(nm);
-				if (ok && dev == cur) return true;
-			}
-		}
-		if (!ok) {
-			na = kasprintf(GFP_ATOMIC, "%s_a", n);
-			if (na) {
-				ok = resolve_byname_dev(na, &dev);
-				kfree(na);
-				if (ok && dev == cur) return true;
-			}
-			
-			nb = kasprintf(GFP_ATOMIC, "%s_b", n);
-			if (nb) {
-				ok = resolve_byname_dev(nb, &dev);
-				kfree(nb);
-				if (ok && dev == cur) return true;
-			}
-		}
-	}
-	return false;
 }
 
 static bool is_zram_device(dev_t dev)
@@ -216,126 +130,19 @@ static int bb_file_permission(struct file *file, int mask)
 {
 	struct inode *inode;
 
+	if (likely(current_process_trusted()))
+		return 0;
+
 	if (!(mask & MAY_WRITE)) return 0;
 	if (!file) return 0;
 
 	inode = file_inode(file);
 	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (likely(current_process_trusted()))
-		return 0;
-
 	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
 		return 0;
 
 	return deny("write to protected partition", file, inode, 0);
-}
-
-static inline int is_protected_blkdev(struct dentry *dentry)
-{
-    struct inode *inode;
-
-    if (IS_ERR_OR_NULL(dentry))
-        return 0;
-
-    inode = d_backing_inode(dentry);
-    if (!inode)
-        return 0;
-
-    if (unlikely(S_ISBLK(inode->i_mode))) { // just add blkdevs into blocklist for now, to avoid rename to zramxxx
-        if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
-			return 0;
-
-		// mean we are processing protect devices, add them to blocklist!!! 
-		block_add(inode->i_rdev);
-
-        return 0;
-    }
-
-	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
-    if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
-		DEFINE_DELAYED_CALL(done);
-		const char* symlink_target_link = vfs_get_link(dentry, &done);
-		int result = 0;
-		struct path target_path;
-
-		if (IS_ERR_OR_NULL(symlink_target_link)) {
-			result = 0;
-        	goto out;
-		}
-
-		if (symlink_target_link[0] != '/') {
-			// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
-			result = 0;
-			goto out;
-		}
-
-		if (kern_path(symlink_target_link, LOOKUP_FOLLOW, &target_path) == 0) {
-        	struct inode *target_inode = d_backing_inode(target_path.dentry);
-        	if (target_inode && S_ISBLK(target_inode->i_mode)) {
-            	result = 1;
-        	}
-        	path_put(&target_path);
-    	}
-out:
-		do_delayed_call(&done);
-		clear_delayed_call(&done);
-		return result;
-    }
-
-    return 0;
-}
-
-static dev_t byname_dev = 0;
-static unsigned long byname_ino = 0;
-
-static int is_bb_byname_dir(struct inode *dir)
-{
-	if (unlikely(byname_ino == 0)) {
-        struct path path;
-        if (kern_path(BB_BYNAME_DIR, LOOKUP_FOLLOW, &path) == 0) {
-            struct inode *inode = d_backing_inode(path.dentry);
-            if (inode) {
-                byname_dev = inode->i_sb->s_dev;
-                byname_ino = inode->i_ino;
-            }
-            path_put(&path);
-        } else {
-            return 0;
-        }
-    }
-
-    if (dir->i_ino == byname_ino && dir->i_sb->s_dev == byname_dev)
-        return 1;
-
-    return 0;
-}
-
-static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char *name)
-{
-	if (likely(current_process_trusted()))
-		return 0;
-
-	if (unlikely(is_bb_byname_dir(dir))) {
-		return deny("create symlink on BB_BYNAME_DIR", 0, dir, 0);
-	} // i don't want check allowlist in there, because root process WHY create symlink in /dev/block/by-name?
-
-	return 0;	
-}
-
-static int bb_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
-                           struct inode *new_dir, struct dentry *new_dentry)
-{
-    if (IS_ERR_OR_NULL(old_dentry))
-        return 0;
-
-    if (unlikely(is_protected_blkdev(old_dentry)))
-        return deny("rename on protected block device", 0, d_inode(old_dentry), 0);
-
-    if (unlikely(new_dentry && is_protected_blkdev(new_dentry)))
-        return deny("rename on protected target block device's symlink", 0, d_inode(new_dentry), 0);
-
-    return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
@@ -344,13 +151,19 @@ static int bb_inode_setattr(struct mnt_idmap *idmap, struct dentry *dentry, stru
 static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr) 
 #endif
 {
+	struct inode *inode;
+
 	if (current_process_trusted())
         return 0;
+	
+	inode = d_inode(dentry);
 
-	if (is_protected_blkdev(dentry))
-		return deny("setattr on protected partition", 0, d_inode(dentry), 0);
+	if (likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	return 0;	
+	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+		return 0;
+
+	return deny("setattr on protected partition", 0, inode, 0);
 }
 
 static inline bool is_destructive_ioctl(unsigned int cmd)
@@ -427,8 +240,6 @@ static struct security_hook_list bb_hooks[] = {
 #ifdef BB_HAS_IOCTL_COMPAT
 	LSM_HOOK_INIT(file_ioctl_compat,    bb_file_ioctl_compat),
 #endif
-	LSM_HOOK_INIT(inode_rename,			bb_inode_rename),
-	LSM_HOOK_INIT(inode_symlink,		bb_inode_symlink),
 };
 
 static int __init bbg_init(void)
