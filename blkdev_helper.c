@@ -1,6 +1,5 @@
 #include <linux/version.h>
 #include <linux/blkdev.h>
-#include <linux/genhd.h>
 #include <linux/err.h>
 #include <linux/string.h>
 
@@ -121,6 +120,7 @@ bool is_allowed_partition_dev_resolve(dev_t dev)
 }
 
 #else
+#include <linux/genhd.h>
 
 /*
  * Linux 3.18～5.10：
