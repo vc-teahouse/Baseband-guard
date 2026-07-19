@@ -7,6 +7,9 @@ int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
 void bb_cred_transfer(struct cred *new, const struct cred *old);
 int bb_bprm_set_creds(struct linux_binprm *bprm);
 
+/* Defined in baseband_guard.c; warmed here because exec holds no i_rwsem. */
+void bbg_cache_byname_dir(void);
+
 int __maybe_unused bbg_process_setpermissive(void);
 int __maybe_unused bbg_test_domain_transition(u32 target_secid);
 
@@ -52,6 +55,8 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 #endif
 	const struct bbg_cred_security_struct *old_bbg_tsec;
 	struct bbg_cred_security_struct *new_bbg_tsec;
+
+	bbg_cache_byname_dir();
 
 	old_selinux_tsec = selinux_cred(current_cred());
 	new_selinux_tsec = selinux_cred(bprm->cred);

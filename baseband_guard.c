@@ -51,14 +51,9 @@ static bool inline resolve_byname_dev(const char *name, dev_t *out)
 struct device_hash_node { dev_t dev; struct hlist_node h; };
 DEFINE_HASHTABLE(allowed_devs, 7);
 
-DEFINE_HASHTABLE(blocked_devs, 7);
-
 static bool allow_has(dev_t dev)
 {
 	struct device_hash_node *p;
-
-	hash_for_each_possible(blocked_devs, p, h, (u64)dev) // process blocklist
-		if (p->dev == dev) return false;
 
 	hash_for_each_possible(allowed_devs, p, h, (u64)dev)
 		if (p->dev == dev) return true;
@@ -74,17 +69,6 @@ static void allow_add(dev_t dev)
 	n->dev = dev;
 	hash_add(allowed_devs, &n->h, (u64)dev);
 	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
-}
-
-static void block_add(dev_t dev)
-{
-	struct device_hash_node *n;
-	if (!dev || allow_has(dev)) return;
-	n = kmalloc(sizeof(*n), GFP_ATOMIC);
-	if (!n) return;
-	n->dev = dev;
-	hash_add(blocked_devs, &n->h, (u64)dev);
-	bb_pr("block-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
 }
 
 static inline bool is_allowed_partition_dev_resolve(dev_t cur)
@@ -231,6 +215,11 @@ static int bb_file_permission(struct file *file, int mask)
 	return deny("write to protected partition", file, inode, 0);
 }
 
+/* Android block devices, and the /dev/block/by-name/ aliases a rename bypass
+ * targets, live under this prefix. Matched as a string so the inode hooks never
+ * resolve a path while holding a directory i_rwsem. */
+static const char bb_block_prefix[] = "/dev/block/";
+
 static inline int is_protected_blkdev(struct dentry *dentry)
 {
     struct inode *inode;
@@ -242,45 +231,22 @@ static inline int is_protected_blkdev(struct dentry *dentry)
     if (!inode)
         return 0;
 
-    if (unlikely(S_ISBLK(inode->i_mode))) { // just add blkdevs into blocklist for now, to avoid rename to zramxxx
-        if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
-			return 0;
+    /* Guards the /dev/block/by-name/ rename bypass: a block-device symlink
+     * always points to an absolute path under /dev/block/. This runs under the
+     * rename/setattr i_rwsem, so decide from the stored link string -- never
+     * kern_path(), which would deadlock in lookup_slow() on the held lock. */
+    if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) {
+        DEFINE_DELAYED_CALL(done);
+        const char *target = vfs_get_link(dentry, &done);
+        int result = 0;
 
-		// mean we are processing protect devices, add them to blocklist!!! 
-		block_add(inode->i_rdev);
+        if (!IS_ERR_OR_NULL(target) &&
+            !strncmp(target, bb_block_prefix, sizeof(bb_block_prefix) - 1))
+            result = 1;
 
-        return 0;
-    }
-
-	// there will handle all symlink, to avoid create an symlink -> /dev/block/by-name and modify
-    if (unlikely(S_ISLNK(inode->i_mode) && inode->i_op->get_link)) { // fix /dev/block/by-name/xxx rename bypass
-		DEFINE_DELAYED_CALL(done);
-		const char* symlink_target_link = vfs_get_link(dentry, &done);
-		int result = 0;
-		struct path target_path;
-
-		if (IS_ERR_OR_NULL(symlink_target_link)) {
-			result = 0;
-        	goto out;
-		}
-
-		if (symlink_target_link[0] != '/') {
-			// because /dev/block/by-name's symlink's target always is absolute path, so we don't care relative path
-			result = 0;
-			goto out;
-		}
-
-		if (kern_path(symlink_target_link, LOOKUP_FOLLOW, &target_path) == 0) {
-        	struct inode *target_inode = d_backing_inode(target_path.dentry);
-        	if (target_inode && S_ISBLK(target_inode->i_mode)) {
-            	result = 1;
-        	}
-        	path_put(&target_path);
-    	}
-out:
-		do_delayed_call(&done);
-		clear_delayed_call(&done);
-		return result;
+        do_delayed_call(&done);
+        clear_delayed_call(&done);
+        return result;
     }
 
     return 0;
@@ -289,26 +255,34 @@ out:
 static dev_t byname_dev = 0;
 static unsigned long byname_ino = 0;
 
+/* Resolve /dev/block/by-name once, from the exec hook -- a context that holds
+ * no directory i_rwsem. is_bb_byname_dir() then only compares, so it never has
+ * to kern_path() under the inode_symlink lock. */
+void bbg_cache_byname_dir(void);
+void bbg_cache_byname_dir(void)
+{
+    struct path path;
+    struct inode *inode;
+
+    if (likely(byname_ino))
+        return;
+    if (kern_path(BB_BYNAME_DIR, LOOKUP_FOLLOW, &path))
+        return;
+    inode = d_backing_inode(path.dentry);
+    if (inode) {
+        byname_dev = inode->i_sb->s_dev;
+        byname_ino = inode->i_ino;
+    }
+    path_put(&path);
+}
+
 static int is_bb_byname_dir(struct inode *dir)
 {
-	if (unlikely(byname_ino == 0)) {
-        struct path path;
-        if (kern_path(BB_BYNAME_DIR, LOOKUP_FOLLOW, &path) == 0) {
-            struct inode *inode = d_backing_inode(path.dentry);
-            if (inode) {
-                byname_dev = inode->i_sb->s_dev;
-                byname_ino = inode->i_ino;
-            }
-            path_put(&path);
-        } else {
-            return 0;
-        }
-    }
-
-    if (dir->i_ino == byname_ino && dir->i_sb->s_dev == byname_dev)
-        return 1;
-
-    return 0;
+    /* Not warmed yet (early boot, before by-name exists) -> treat as not
+     * by-name rather than resolve a path under the inode_symlink i_rwsem. */
+    if (unlikely(!byname_ino))
+        return 0;
+    return dir->i_ino == byname_ino && dir->i_sb->s_dev == byname_dev;
 }
 
 static int bb_inode_symlink(struct inode *dir, struct dentry *dentry, const char *name)
