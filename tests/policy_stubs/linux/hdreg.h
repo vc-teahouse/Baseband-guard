@@ -1,0 +1,7 @@
+#ifndef _BBG_TEST_LINUX_HDREG_H_
+#define _BBG_TEST_LINUX_HDREG_H_
+
+#define HDIO_GETGEO		0xBB010018u
+#define HDIO_DRIVE_CMD		0xBB010019u
+
+#endif

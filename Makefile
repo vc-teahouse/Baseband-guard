@@ -1,6 +1,8 @@
 bbg-objs += baseband_guard.o
 bbg-objs += tracing/tracing.o
 bbg-objs += blkdev_helper.o
+bbg-objs += partition_match.o
+bbg-objs += block_policy.o
 
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include -I$(srctree)/block
 ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
@@ -47,10 +49,11 @@ ifeq ($(shell grep -q "selinux_state" $(srctree)/security/selinux/include/securi
     $(info -- Baseband-guard/compat: found selinux_state)
 endif
 
-ifneq ($(shell grep -q "disk_get_part" $(srctree)/include/linux/genhd.h 2>/dev/null && echo true),true)
-    ccflags-y += -DBBG_COMPAT_HAS_BLOCK_DEVICE_API
-    $(info -- Baseband-guard/compat: found modern block device api)
-endif
+BBG_BLOCK_API_FLAGS := $(shell sh $(BBG_DIR)/scripts/detect-block-api.sh $(srctree))
+ccflags-y += $(BBG_BLOCK_API_FLAGS)
+
+BBG_LSM_API_FLAGS := $(shell sh $(BBG_DIR)/scripts/detect-lsm-api.sh $(srctree))
+ccflags-y += $(BBG_LSM_API_FLAGS)
 
 HAS_DEFINE_LSM := $(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
 

@@ -1,12 +1,13 @@
-#include <linux/version.h>
 #include <linux/blkdev.h>
 #include <linux/err.h>
 #include <linux/string.h>
 
 #include "baseband_guard.h"
+#include "blkdev_compat.h"
 #include "blkdev_helper.h"
+#include "partition_match.h"
 
-extern char *saved_command_line; 
+extern char *saved_command_line;
 static const char *slot_suffix_from_cmdline(void)
 {
 	const char *p = saved_command_line;
@@ -18,74 +19,14 @@ static const char *slot_suffix_from_cmdline(void)
 	return NULL;
 }
 
-static bool partition_name_matches(const char *partition_name,
-				   size_t partition_len,
-				   const char *base_name,
-				   const char *suffix)
-{
-	size_t base_len;
-	size_t suffix_len;
-
-	if (!partition_name || !base_name || !suffix)
-		return false;
-
-	base_len = strlen(base_name);
-	suffix_len = strlen(suffix);
-
-	if (partition_len != base_len + suffix_len)
-		return false;
-
-	return !memcmp(partition_name, base_name, base_len) &&
-	       !memcmp(partition_name + base_len, suffix, suffix_len);
-}
-
 static bool partition_name_in_allowlist(const char *name, size_t max_len)
 {
-	const char *slot_suffix = slot_suffix_from_cmdline();
-	size_t name_len;
-	size_t i;
-
-	if (!name || !max_len)
-		return false;
-
-	name_len = strnlen(name, max_len);
-	if (!name_len || name_len == max_len)
-		return false;
-
-	for (i = 0; i < allowlist_cnt; i++) {
-		const char *allowed = allowlist_names[i];
-		size_t allowed_len;
-
-		if (!allowed)
-			continue;
-
-		allowed_len = strlen(allowed);
-
-		if (name_len == allowed_len &&
-		    !memcmp(name, allowed, name_len))
-			return true;
-
-		if (slot_suffix) {
-			if (partition_name_matches(name, name_len,
-						   allowed, slot_suffix))
-				return true;
-
-			continue;
-		}
-
-		if (partition_name_matches(name, name_len,
-					   allowed, "_a"))
-			return true;
-
-		if (partition_name_matches(name, name_len,
-					   allowed, "_b"))
-			return true;
-	}
-
-	return false;
+	return bbg_partition_name_allowed(name, max_len,
+					  slot_suffix_from_cmdline(),
+					  allowlist_names, allowlist_cnt);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0) || defined(BBG_COMPAT_HAS_BLOCK_DEVICE_API)
+#if defined(BBG_HAS_BD_META_INFO) && defined(BBG_HAS_BLKDEV_GET_NO_OPEN)
 
 /*
  * Linux 5.11+：
@@ -104,7 +45,7 @@ bool is_allowed_partition_dev_resolve(dev_t dev)
 	if (!dev)
 		return false;
 
-	bdev = blkdev_get_no_open(dev);
+	bdev = bbg_blkdev_get_no_open(dev);
 	if (IS_ERR_OR_NULL(bdev))
 		return false;
 
@@ -115,11 +56,11 @@ bool is_allowed_partition_dev_resolve(dev_t dev)
 			sizeof(info->volname));
 	}
 
-	blkdev_put_no_open(bdev);
+	bbg_blkdev_put_no_open(bdev);
 	return allowed;
 }
 
-#else
+#elif defined(BBG_HAS_DISK_GET_PART)
 #include <linux/genhd.h>
 
 /*
@@ -167,4 +108,6 @@ out_put_disk:
 	return allowed;
 }
 
+#else
+#error "Baseband-guard: unsupported block partition metadata API"
 #endif
