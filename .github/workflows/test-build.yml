@@ -10,7 +10,19 @@ on:
   pull_request:
 
 jobs:
+  host-tests:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run host tests
+        run: sh tests/run-tests.sh
+
   build-check:
+    needs: host-tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

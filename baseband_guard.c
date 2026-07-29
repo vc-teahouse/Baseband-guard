@@ -11,58 +11,44 @@
 #include <linux/version.h>
 #include <linux/cred.h>
 #include <linux/dcache.h>
-#include <linux/hashtable.h>
+#include <linux/ratelimit.h>
+
+#if defined(BBG_HAS_URING_CMD) && defined(CONFIG_IO_URING)
+#if defined(BBG_URING_CMD_HEADER_CMD) && \
+	defined(BBG_URING_CMD_HEADER_LEGACY)
+#error "Baseband-guard: multiple io_uring command headers selected"
+#elif defined(BBG_URING_CMD_HEADER_CMD)
+#include <linux/io_uring/cmd.h>
+#elif defined(BBG_URING_CMD_HEADER_LEGACY)
+#include <linux/io_uring.h>
+#else
+#error "Baseband-guard: io_uring command header not selected"
+#endif
+#endif
 
 #include "kernel_compat.h"
 #include "baseband_guard.h"
 #include "tracing/tracing.h"
 #include "blkdev_helper.h"
+#include "block_policy.h"
 
-struct device_hash_node { dev_t dev; struct hlist_node h; };
-DEFINE_HASHTABLE(allowed_devs, 7);
-
-static bool allow_has(dev_t dev)
-{
-	struct device_hash_node *p;
-
-	hash_for_each_possible(allowed_devs, p, h, (u64)dev)
-		if (p->dev == dev) return true;
-	return false;
-}
-
-static void allow_add(dev_t dev)
-{
-	struct device_hash_node *n;
-	if (!dev || allow_has(dev)) return;
-	n = kmalloc(sizeof(*n), GFP_ATOMIC);
-	if (!n) return;
-	n->dev = dev;
-	hash_add(allowed_devs, &n->h, (u64)dev);
-	bb_pr("allow-cache dev %u:%u\n", MAJOR(dev), MINOR(dev));
-}
+static DEFINE_RATELIMIT_STATE(bbg_deny_rs, DEFAULT_RATELIMIT_INTERVAL,
+			      DEFAULT_RATELIMIT_BURST);
 
 static bool is_zram_device(dev_t dev)
 {
 	bool is_zram = bbg_is_named_device(dev, "zram");
 	if (is_zram) {
-		bb_pr("zram dev %u:%u identified, whitelisting\n",
+		bb_pr("zram dev %u:%u allowed for current access\n",
 				MAJOR(dev), MINOR(dev));
 	}
 	return is_zram;
 }
 
-static bool reverse_allow_match_and_cache(dev_t cur)
+static bool is_allowed_block_device(dev_t dev)
 {
-	if (!cur) return false;
-	if (is_zram_device(cur)) {
-		allow_add(cur);
-		return true;
-	}
-	if (is_allowed_partition_dev_resolve(cur)) {
-		allow_add(cur);
-		return true;
-	}
-	return false;
+	if (!dev) return false;
+	return is_zram_device(dev) || is_allowed_partition_dev_resolve(dev);
 }
 
 static const char *bbg_file_path(struct file *file, char *buf, int buflen)
@@ -78,6 +64,7 @@ static int bbg_get_cmdline(char *buf, int buflen)
 {
 	int n, i;
 	if (!buf || buflen <= 0) return 0;
+	buf[0] = '\0';
 	n = get_cmdline(current, buf, buflen);
 	if (n <= 0) return 0;
 	for (i = 0; i < n - 1; i++) if (buf[i] == '\0') buf[i] = ' ';
@@ -90,29 +77,25 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 {
 	const int PATH_BUFLEN = 256;
 	const int CMD_BUFLEN  = 256;
+	char *pathbuf;
+	char *cmdbuf;
+	const char *path;
+	const char *cmdline = NULL;
+	dev_t dev;
 
-	char *pathbuf = kmalloc(PATH_BUFLEN, GFP_ATOMIC);
-	char *cmdbuf  = kmalloc(CMD_BUFLEN,  GFP_ATOMIC);
+	pathbuf = kmalloc(PATH_BUFLEN, GFP_ATOMIC);
+	cmdbuf = kmalloc(CMD_BUFLEN, GFP_ATOMIC);
+	path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
+	dev = inode ? inode->i_rdev : 0;
 
-	const char *path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
-	dev_t dev = inode ? inode->i_rdev : 0;
+	if (cmdbuf && bbg_get_cmdline(cmdbuf, CMD_BUFLEN) > 0)
+		cmdline = cmdbuf;
 
-	if (cmdbuf)
-		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
-
-	if (cmd_opt) {
-		pr_info(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
-			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
-			cmdbuf ? cmdbuf : "?");
-	} else {
-		pr_info(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
-			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
-			cmdbuf ? cmdbuf : "?");
-	}
+	pr_info(
+		"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
+		why, cmd_opt, MAJOR(dev), MINOR(dev),
+		path ? path : "?", current->pid, current->comm,
+		cmdline ? cmdline : "?");
 
 	kfree(cmdbuf);
 	kfree(pathbuf);
@@ -120,10 +103,49 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 
 static int deny(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
-	bbg_log_deny_detail(why, file, inode, cmd_opt);
-	bb_pr_rl("deny %s pid=%d comm=%s\n", why, current->pid, current->comm);
+	if (__ratelimit(&bbg_deny_rs))
+		bbg_log_deny_detail(why, file, inode, cmd_opt);
 	if (!BB_ENFORCING) return 0;
 	return -EPERM;
+}
+
+#if defined(BBG_HAS_URING_CMD) && defined(CONFIG_IO_URING)
+static int bb_uring_cmd(struct io_uring_cmd *ioucmd)
+{
+	struct file *file;
+	struct inode *inode;
+
+	if (!ioucmd) return 0;
+	file = ioucmd->file;
+	if (!file) return 0;
+
+	inode = file_inode(file);
+	if (!inode || likely(!S_ISBLK(inode->i_mode))) return 0;
+	if (likely(current_process_trusted())) return 0;
+
+	if (bbg_block_uring_allowed(false))
+		return 0;
+	return deny("unsafe uring command on block device", file, inode, 0);
+}
+#endif
+
+static int bb_file_open(struct file *file)
+{
+	struct inode *inode;
+
+	if (likely(current_process_trusted()))
+		return 0;
+	if (!file) return 0;
+
+	inode = file_inode(file);
+	if (!inode || likely(!S_ISBLK(inode->i_mode))) return 0;
+	if (!(file->f_mode & FMODE_WRITE)) return 0;
+
+	if (bbg_block_write_allowed(false,
+			is_allowed_block_device(inode->i_rdev)))
+		return 0;
+
+	return deny("write-capable open on protected partition", file, inode, 0);
 }
 
 static int bb_file_permission(struct file *file, int mask)
@@ -137,9 +159,10 @@ static int bb_file_permission(struct file *file, int mask)
 	if (!file) return 0;
 
 	inode = file_inode(file);
-	if (likely(!S_ISBLK(inode->i_mode))) return 0;
+	if (!inode || likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+	if (bbg_block_write_allowed(false,
+			is_allowed_block_device(inode->i_rdev)))
 		return 0;
 
 	return deny("write to protected partition", file, inode, 0);
@@ -148,75 +171,55 @@ static int bb_file_permission(struct file *file, int mask)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
 static int bb_inode_setattr(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *iattr)
 #else
-static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr) 
+static int bb_inode_setattr(struct dentry *dentry, struct iattr *iattr)
 #endif
 {
 	struct inode *inode;
 
 	if (current_process_trusted())
-        return 0;
-	
+		return 0;
+	if (!dentry) return 0;
+
 	inode = d_inode(dentry);
 
-	if (likely(!S_ISBLK(inode->i_mode))) return 0;
+	if (!inode || likely(!S_ISBLK(inode->i_mode))) return 0;
 
-	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+	if (bbg_block_write_allowed(false,
+			is_allowed_block_device(inode->i_rdev)))
 		return 0;
 
 	return deny("setattr on protected partition", 0, inode, 0);
 }
 
-static inline bool is_destructive_ioctl(unsigned int cmd)
-{
-	switch (cmd) {
-	case BLKDISCARD:
-	case BLKSECDISCARD:
-	case BLKZEROOUT:
-#ifdef BLKPG
-	case BLKPG:
-#endif
-#ifdef BLKTRIM
-	case BLKTRIM:
-#endif
-#ifdef BLKRRPART
-	case BLKRRPART:
-#endif
-#ifdef BLKSETRO
-	case BLKSETRO:
-#endif
-#ifdef BLKSETBADSECTORS
-	case BLKSETBADSECTORS:
-#endif
-		return true;
-	default:
-		return false;
-	}
-}
-
 static int bb_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct inode *inode;
-
-	if (!file) return 0;
-	inode = file_inode(file);
-	if (likely(!S_ISBLK(inode->i_mode))) return 0;
-
-	if (!is_destructive_ioctl(cmd))
-		return 0;
+	bool device_allowed;
 
 	if (likely(current_process_trusted()))
 		return 0;
+	if (!file) return 0;
 
-	if (allow_has(inode->i_rdev) || reverse_allow_match_and_cache(inode->i_rdev))
+	inode = file_inode(file);
+	if (!inode || likely(!S_ISBLK(inode->i_mode))) return 0;
+
+	if (bbg_block_ioctl_allowed(false, false, cmd))
+		return 0;
+	if (!bbg_block_ioctl_allowed(false, true, cmd))
+		return deny("unsafe ioctl on block device", file, inode, cmd);
+
+	/* Only bounded mutations differ between the two policy probes. */
+	device_allowed = is_allowed_block_device(inode->i_rdev);
+	if (bbg_block_ioctl_allowed(false, device_allowed, cmd))
 		return 0;
 
-	return deny("destructive ioctl on protected partition", file, inode, cmd);
+	return deny("unsafe ioctl on block device", file, inode, cmd);
 }
 
 #ifdef BB_HAS_IOCTL_COMPAT
 static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	return bb_file_ioctl(file, cmd, arg);
+	return bb_file_ioctl(file, bbg_block_ioctl_compat_normalize(cmd), arg);
 }
 #endif
 
@@ -225,8 +228,12 @@ extern void bb_cred_transfer(struct cred *new, const struct cred *old);
 extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
 
 static struct security_hook_list bb_hooks[] = {
+	LSM_HOOK_INIT(file_open,            bb_file_open),
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
+#if defined(BBG_HAS_URING_CMD) && defined(CONFIG_IO_URING)
+	LSM_HOOK_INIT(uring_cmd,             bb_uring_cmd),
+#endif
 	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)

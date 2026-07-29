@@ -3,7 +3,7 @@
 #include <linux/lsm_hooks.h>
 #include <linux/version.h>
 #include "objsec.h"
-#include "blk.h"
+#include "blkdev_compat.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
@@ -35,60 +35,6 @@ static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
 	*out = dev;
 	return 0;
 }
-#endif
-
-// https://github.com/torvalds/linux/commit/22ae8ce8b89241c94ac00c237752c0ffa37ba5ae
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0) 
-
-static __maybe_unused bool bbg_is_named_device(dev_t dev, const char *name_prefix)
-{
-    struct block_device *bdev;
-    bool match = false;
-
-    bdev = blkdev_get_by_dev(dev, FMODE_READ, THIS_MODULE);
-    if (IS_ERR(bdev))
-        return false;
-
-    if (bdev->bd_disk && name_prefix) {
-        const char *disk_name = bdev->bd_disk->disk_name;
-        size_t prefix_len = strlen(name_prefix);
-
-        if (strncmp(disk_name, name_prefix, prefix_len) == 0) {
-            match = true;
-        }
-    }
-
-    blkdev_put(bdev, FMODE_READ);
-    return match;
-}
-#else
-
-static __maybe_unused bool bbg_is_named_device(dev_t dev, const char *name_prefix)
-{
-    struct block_device *bdev;
-    bool match = false;
-
-// https://github.com/torvalds/linux/commit/5f33b5226c9d92359e58e91ad0bf0c1791da36a1
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
-    bdev = blkdev_get_no_open(dev);
-#else
-    bdev = blkdev_get_no_open(dev, true);
-#endif
-
-    if (IS_ERR(bdev))
-        return false;
-
-    if (bdev->bd_disk && name_prefix) {
-        const char *disk_name = bdev->bd_disk->disk_name;
-        size_t prefix_len = strlen(name_prefix);
-        match = (strncmp(disk_name, name_prefix, prefix_len) == 0);
-    }
-
-    blkdev_put_no_open(bdev);
-
-    return match;
-}
-
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
