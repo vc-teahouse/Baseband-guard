@@ -14,7 +14,7 @@ int __maybe_unused bbg_test_domain_transition(u32 target_secid);
 struct lsm_blob_sizes bbg_blob_sizes __ro_after_init = {
 	.lbs_cred = sizeof(struct bbg_cred_security_struct),
 };
-#else
+#elif !defined(BBG_COMPAT_SELINUX_CRED)
 static inline struct task_security_struct *selinux_cred(const struct cred *cred)
 {
 	return cred->security;
