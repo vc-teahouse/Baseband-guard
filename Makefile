@@ -47,6 +47,11 @@ ifeq ($(shell grep -q "selinux_state" $(srctree)/security/selinux/include/securi
     $(info -- Baseband-guard/compat: found selinux_state)
 endif
 
+ifeq ($(shell grep -q "task_security_struct\s\+\*selinux_cred" $(srctree)/security/selinux/include/objsec.h; echo $$?),0)
+    ccflags-y += -DBBG_COMPAT_SELINUX_CRED
+    $(info -- Baseband_guard/compat: found selinux_cred)
+endif
+
 ifneq ($(shell grep -q "disk_get_part" $(srctree)/include/linux/genhd.h 2>/dev/null && echo true),true)
     ccflags-y += -DBBG_COMPAT_HAS_BLOCK_DEVICE_API
     $(info -- Baseband-guard/compat: found modern block device api)
