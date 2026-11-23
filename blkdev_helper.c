@@ -5,6 +5,7 @@
 
 #include "baseband_guard.h"
 #include "blkdev_helper.h"
+#include "blk.h"
 
 extern char *saved_command_line; 
 static const char *slot_suffix_from_cmdline(void)
@@ -104,7 +105,11 @@ bool is_allowed_partition_dev_resolve(dev_t dev)
 	if (!dev)
 		return false;
 
-	bdev = blkdev_get_no_open(dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
+    bdev = blkdev_get_no_open(dev);
+#else
+    bdev = blkdev_get_no_open(dev, true);
+#endif
 	if (IS_ERR_OR_NULL(bdev))
 		return false;
 
