@@ -253,11 +253,19 @@ static int __init bbg_init(void)
 
 extern struct lsm_blob_sizes bbg_blob_sizes;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0)
+extern struct lsm_id bbg_lsmid;
+#endif
+
 #ifndef BBG_USE_DEFINE_LSM
 security_initcall(bbg_init);
 #else
 DEFINE_LSM(baseband_guard) = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7,2,0)
+	.id = &bbg_lsmid,
+#else
 	.name = "baseband_guard",
+#endif
 	.init = bbg_init,
 	.blobs = &bbg_blob_sizes
 };
