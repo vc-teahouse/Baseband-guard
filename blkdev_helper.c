@@ -106,9 +106,9 @@ bool is_allowed_partition_dev_resolve(dev_t dev)
 		return false;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
-    bdev = blkdev_get_no_open(dev);
+	bdev = blkdev_get_no_open(dev);
 #else
-    bdev = blkdev_get_no_open(dev, true);
+	bdev = blkdev_get_no_open(dev, true);
 #endif
 	if (IS_ERR_OR_NULL(bdev))
 		return false;
