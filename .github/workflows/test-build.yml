@@ -163,6 +163,7 @@ jobs:
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' $SECURITY_KCONFIG
 
       - name: Apply Kernel Configuration
+        if: matrix.kernel_config.android_version != 'android18'
         run: |
           cd "$CONFIG"
           # Remove check_defconfig
