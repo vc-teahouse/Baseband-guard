@@ -257,7 +257,12 @@ extern struct lsm_blob_sizes bbg_blob_sizes;
 security_initcall(bbg_init);
 #else
 DEFINE_LSM(baseband_guard) = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,19,0)
+	// https://github.com/torvalds/linux/commit/9f9dc69e06ecbc61e7a50b823b82a78daf130dc0
+	.id = &bbg_lsmid,
+#else
 	.name = "baseband_guard",
+#endif
 	.init = bbg_init,
 	.blobs = &bbg_blob_sizes
 };
