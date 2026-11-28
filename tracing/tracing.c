@@ -2,6 +2,7 @@
 #include <linux/security.h>
 #include <linux/errno.h>
 #include <linux/cred.h>
+#include <linux/ratelimit.h>
 
 int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
 void bb_cred_transfer(struct cred *new, const struct cred *old);
@@ -95,7 +96,7 @@ int bb_bprm_set_creds(struct linux_binprm *bprm)
 		new_selinux_tsec->sid == magisk_sid || new_selinux_tsec->osid == magisk_sid
 	)) {
 		new_bbg_tsec->is_untrusted_process = 1;
-		pr_info("baseband_guard: pid %d has been marked as untrusted process due to its selinux domain\n",
+		pr_info_ratelimited("baseband_guard: pid %d has been marked as untrusted process due to its selinux domain\n",
 			current->pid);
 	}
 
