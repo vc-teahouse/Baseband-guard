@@ -6,7 +6,7 @@
 #include "blk.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
-static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
+static __maybe_unused inline int lookup_bdev_compat(const char *path, dev_t *out) {
     struct block_device *bdev;
 
     if (!path || !out) {
@@ -21,7 +21,7 @@ static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
 	return 0;
 }
 #else
-static __maybe_unused inline int lookup_bdev_compat(char *path, dev_t *out) {
+static __maybe_unused inline int lookup_bdev_compat(const char *path, dev_t *out) {
     dev_t dev;
 	int ret;
 

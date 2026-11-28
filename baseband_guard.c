@@ -12,6 +12,8 @@
 #include <linux/cred.h>
 #include <linux/dcache.h>
 #include <linux/hashtable.h>
+#include <linux/mount.h>
+#include <linux/path.h>
 
 #include "kernel_compat.h"
 #include "baseband_guard.h"
@@ -220,6 +222,139 @@ static int bb_file_ioctl_compat(struct file *file, unsigned int cmd, unsigned lo
 }
 #endif
 
+static bool bbg_matches_rw_mount(const char *mountpoint, const struct super_block *sb)
+{
+	struct path p;
+	bool matched = false;
+
+	if (!mountpoint || !sb)
+		return false;
+	if (kern_path(mountpoint, LOOKUP_FOLLOW, &p) == 0) {
+		if (p.mnt && p.mnt->mnt_sb == sb)
+			matched = true;
+		path_put(&p);
+	}
+	return matched;
+}
+
+static bool bbg_is_allowed_mount_sb(const struct super_block *sb)
+{
+	if (!sb || MAJOR(sb->s_dev) == 0)
+		return true;
+	if (allow_has(sb->s_dev) || reverse_allow_match_and_cache(sb->s_dev))
+		return true;
+	/* Permit dm-backed /data and /metadata mounts whose s_dev lacks GPT volname */
+	if (bbg_matches_rw_mount("/data", sb) || bbg_matches_rw_mount("/metadata", sb))
+		return true;
+	return false;
+}
+
+static int bb_sb_mount(const char *dev_name, const struct path *path,
+		       const char *type, unsigned long flags, void *data)
+{
+	dev_t dev;
+
+	(void)type;
+	(void)data;
+
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)
+		flags &= ~MS_MGC_MSK;
+
+	if (!(flags & (MS_REMOUNT | MS_BIND | MS_MOVE)) &&
+	    (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE)))
+		return 0;
+
+	if ((flags & MS_REMOUNT) && !(flags & MS_RDONLY)) {
+		struct super_block *sb = (path && path->mnt) ? path->mnt->mnt_sb : NULL;
+		bool currently_ro = false;
+
+		if (!sb && path && path->dentry && d_backing_inode(path->dentry))
+			sb = d_backing_inode(path->dentry)->i_sb;
+		if (path && path->mnt && (path->mnt->mnt_flags & MNT_READONLY))
+			currently_ro = true;
+		if (sb && (sb->s_flags & SB_RDONLY))
+			currently_ro = true;
+		if (currently_ro && !bbg_is_allowed_mount_sb(sb))
+			return deny("remount protected partition rw", NULL,
+				    path && path->dentry ? d_backing_inode(path->dentry) : NULL,
+				    0);
+	}
+
+	if (!(flags & (MS_BIND | MS_MOVE | MS_REMOUNT |
+		       MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE)) &&
+	    !(flags & MS_RDONLY) && dev_name && dev_name[0] != '\0') {
+		if (lookup_bdev_compat(dev_name, &dev) == 0 &&
+		    !allow_has(dev) && !reverse_allow_match_and_cache(dev))
+			return deny("mount protected partition rw", NULL,
+				    path && path->dentry ? d_backing_inode(path->dentry) : NULL,
+				    0);
+	}
+
+	return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+static int bb_sb_kern_mount(const struct super_block *sb)
+#else
+static int bb_sb_kern_mount(struct super_block *sb)
+#endif
+{
+	if (!sb || MAJOR(sb->s_dev) == 0 || (sb->s_flags & SB_RDONLY))
+		return 0;
+
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if (bbg_is_allowed_mount_sb(sb))
+		return 0;
+
+	return deny("kern_mount protected partition rw", NULL,
+		    sb->s_root ? d_backing_inode(sb->s_root) : NULL, 0);
+}
+
+static int bb_sb_remount(struct super_block *sb, void *mnt_opts)
+{
+	(void)mnt_opts;
+
+	if (!sb || MAJOR(sb->s_dev) == 0 || !(sb->s_flags & SB_RDONLY))
+		return 0;
+
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if (bbg_is_allowed_mount_sb(sb))
+		return 0;
+
+	return deny("remount protected partition", NULL,
+		    sb->s_root ? d_backing_inode(sb->s_root) : NULL, 0);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
+static int bb_move_mount(const struct path *from_path, const struct path *to_path)
+{
+	(void)to_path;
+
+	if (likely(current_process_trusted()))
+		return 0;
+
+	if (from_path && from_path->mnt && !(from_path->mnt->mnt_flags & MNT_READONLY)) {
+		struct super_block *sb = from_path->mnt->mnt_sb;
+
+		if (!sb && from_path->dentry && d_backing_inode(from_path->dentry))
+			sb = d_backing_inode(from_path->dentry)->i_sb;
+		if (sb && !(sb->s_flags & SB_RDONLY) && !bbg_is_allowed_mount_sb(sb))
+			return deny("move_mount protected partition rw", NULL,
+				    from_path->dentry ? d_backing_inode(from_path->dentry) : NULL,
+				    0);
+	}
+
+	return 0;
+}
+#endif
+
 extern int bb_bprm_set_creds(struct linux_binprm *bprm);
 extern void bb_cred_transfer(struct cred *new, const struct cred *old);
 extern int bb_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp);
@@ -228,6 +363,12 @@ static struct security_hook_list bb_hooks[] = {
 	LSM_HOOK_INIT(file_permission,      bb_file_permission),
 	LSM_HOOK_INIT(file_ioctl,           bb_file_ioctl),
 	LSM_HOOK_INIT(inode_setattr, 		bb_inode_setattr),
+	LSM_HOOK_INIT(sb_mount,             bb_sb_mount),
+	LSM_HOOK_INIT(sb_kern_mount,        bb_sb_kern_mount),
+	LSM_HOOK_INIT(sb_remount,           bb_sb_remount),
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
+	LSM_HOOK_INIT(move_mount,           bb_move_mount),
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
 	LSM_HOOK_INIT(bprm_creds_for_exec,  bb_bprm_set_creds),
