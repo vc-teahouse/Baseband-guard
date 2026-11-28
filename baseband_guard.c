@@ -86,6 +86,36 @@ static int bbg_get_cmdline(char *buf, int buflen)
 	return n;
 }
 
+static void bbg_sanitize_inplace(char *s)
+{
+	unsigned char c;
+
+	if (!s)
+		return;
+	for (; *s; s++) {
+		c = (unsigned char)*s;
+		if (c < 0x20 || c == 0x7f)
+			*s = ' ';
+	}
+}
+
+static void bbg_sanitize_copy(char *dst, size_t dst_sz, const char *src)
+{
+	size_t i;
+
+	if (!dst || dst_sz == 0)
+		return;
+	if (!src) {
+		dst[0] = '\0';
+		return;
+	}
+	for (i = 0; i + 1 < dst_sz && src[i] != '\0'; i++) {
+		unsigned char c = (unsigned char)src[i];
+		dst[i] = (c < 0x20 || c == 0x7f) ? ' ' : (char)c;
+	}
+	dst[i] = '\0';
+}
+
 static void bbg_log_deny_detail(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
 	const int PATH_BUFLEN = 256;
@@ -93,25 +123,32 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 
 	char *pathbuf = kmalloc(PATH_BUFLEN, GFP_ATOMIC);
 	char *cmdbuf  = kmalloc(CMD_BUFLEN,  GFP_ATOMIC);
+	char comm_safe[16];
 
-	const char *path = pathbuf ? bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
+	char *path = pathbuf ? (char *)bbg_file_path(file, pathbuf, PATH_BUFLEN) : NULL;
 	dev_t dev = inode ? inode->i_rdev : 0;
 
-	if (cmdbuf)
-		bbg_get_cmdline(cmdbuf, CMD_BUFLEN);
+	bbg_sanitize_inplace(path);
+	bbg_sanitize_copy(comm_safe, sizeof(comm_safe), current->comm);
+
+	if (cmdbuf) {
+		cmdbuf[0] = '\0';
+		if (bbg_get_cmdline(cmdbuf, CMD_BUFLEN) > 0)
+			bbg_sanitize_inplace(cmdbuf);
+	}
 
 	if (cmd_opt) {
-		pr_info(
-			"baseband_guard: deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
+		bb_pr_rl(
+			"deny %s cmd=0x%x dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, cmd_opt, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
-			cmdbuf ? cmdbuf : "?");
+			path ? path : "?", current->pid, comm_safe,
+			(cmdbuf && cmdbuf[0]) ? cmdbuf : "?");
 	} else {
-		pr_info(
-			"baseband_guard: deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
+		bb_pr_rl(
+			"deny %s dev=%u:%u path=%s pid=%d comm=%s argv=\"%s\"\n",
 			why, MAJOR(dev), MINOR(dev),
-			path ? path : "?", current->pid, current->comm,
-			cmdbuf ? cmdbuf : "?");
+			path ? path : "?", current->pid, comm_safe,
+			(cmdbuf && cmdbuf[0]) ? cmdbuf : "?");
 	}
 
 	kfree(cmdbuf);
@@ -121,7 +158,6 @@ static void bbg_log_deny_detail(const char *why, struct file *file, struct inode
 static int deny(const char *why, struct file *file, struct inode *inode, unsigned int cmd_opt)
 {
 	bbg_log_deny_detail(why, file, inode, cmd_opt);
-	bb_pr_rl("deny %s pid=%d comm=%s\n", why, current->pid, current->comm);
 	if (!BB_ENFORCING) return 0;
 	return -EPERM;
 }
